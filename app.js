@@ -216,7 +216,6 @@ let draft = null;
 function render() {
   const gated = !!(window.MonySync && MonySync.needsSignIn());
   document.body.classList.toggle('gate', gated);
-  document.body.classList.remove('navup');
   if (gated) { document.body.dataset.view = 'gate'; $('#view').innerHTML = viewGate(); return; }
   const [name, arg] = (location.hash.slice(1) || 'home').split('/');
   document.body.dataset.view = name in { home: 1, new: 1, pay: 1, savings: 1, waiting: 1, history: 1, splits: 1 } ? name : 'home';
@@ -1051,21 +1050,6 @@ document.addEventListener('keydown', e => { if ((e.key === ' ' || e.key === 'Ent
 document.addEventListener('keyup', e => { if ((e.key === ' ' || e.key === 'Enter') && e.target.id === 'wd-hold') holdStop(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#sheetWrap').hidden) closeSheet(); });
 
-/* Home doesn't scroll. Swiping up there brings the toolbar in over a blur; a small swipe down sends it away. */
-const onHome = () => document.body.dataset.view === 'home' && $('#sheetWrap').hidden;
-const navUp = () => document.body.classList.add('navup');
-const navDown = () => document.body.classList.remove('navup');
-ACT.navUp = navUp; ACT.navDown = navDown;
-let swipeY = null;
-document.addEventListener('touchstart', e => { swipeY = onHome() ? e.touches[0].clientY : null; }, { passive: true });
-document.addEventListener('touchmove', e => {
-  if (swipeY == null || !onHome()) return;
-  e.preventDefault();
-  const y = e.touches[0].clientY, dy = y - swipeY;
-  if (dy < -24) { navUp(); swipeY = y; } else if (dy > 12) { navDown(); swipeY = y; }
-}, { passive: false });
-document.addEventListener('touchend', () => { swipeY = null; });
-document.addEventListener('wheel', e => { if (!onHome()) return; if (e.deltaY > 6) navUp(); else if (e.deltaY < -3) navDown(); }, { passive: true });
 
 /* ---------- boot ---------- */
 render();
