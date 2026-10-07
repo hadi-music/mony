@@ -221,7 +221,7 @@
 
   /* ---------- sync loop ---------- */
   let busy = false, again = false, timer = null, quiet = false;
-  async function syncNow() {
+  async function syncNow(manual) {
     if (!connected()) return paint();
     if (busy) { again = true; return; }
     if (!navigator.onLine) { state = 'offline'; return paint(); }
@@ -239,6 +239,7 @@
       await writeGrid(SY.fileId, buildGrid(merged));
       SY.base = snapshot(merged); SY.lastSync = Date.now(); SY.dirty = false;
       state = 'ok'; lastError = '';
+      if (manual === true && !pendingToast) pendingToast = 'Synced';
       if (before !== JSON.stringify(S) && $('#sheetWrap').hidden && !location.hash.startsWith('#new')) render();
     } catch (e) {
       if (e instanceof AuthError) state = 'auth';
@@ -300,7 +301,12 @@
         startAuth('', MonySync.needsSignIn() ? '#home' : null);
       },
       syncReconnect() { startAuth('none'); },
-      syncTap() { if (state === 'auth') startAuth('none'); else if (location.hash === '#splits') syncNow(); else go('splits'); },
+      syncTap() {
+        if (state === 'auth') return startAuth('none');
+        if (state === 'offline' || !navigator.onLine) return toast('You’re offline — it’ll sync when you’re back');
+        if (state === 'syncing') return;
+        syncNow(true);
+      },
       syncDisconnect() {
         confirmSheet('Disconnect Google?', 'Sync stops on this phone. Your data stays here, and the MONY sheet stays in your Drive.', 'Disconnect', () => {
           if (SY.token) fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(SY.token), { method: 'POST', mode: 'no-cors' }).catch(() => {});
