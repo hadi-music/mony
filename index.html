@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MONY</title>
+<meta name="description" content="Pay yourself first. Split every payment, tick off the transfers.">
+<meta name="theme-color" content="#F1EDE4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121211" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="MONY">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="appbar"><span class="wordmark">MONY</span></header>
+<main id="view" class="view" aria-live="polite"></main>
+<nav class="tabs" aria-label="Sections">
+  <a href="#home" data-tab="home">Home</a>
+  <a href="#savings" data-tab="savings">Savings</a>
+  <a href="#waiting" data-tab="waiting">Waiting</a>
+  <a href="#history" data-tab="history">History</a>
+  <a href="#splits" data-tab="splits">Splits</a>
+</nav>
+<div id="sheetWrap" class="sheet-wrap" hidden>
+  <div class="scrim" data-act="closeSheet"></div>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>
+</div>
+<div id="toast" class="toast" role="status"></div>
+<input type="file" id="restoreFile" accept="application/json,.json" hidden>
+<script src="app.js"></script>
+</body>
+</html>
