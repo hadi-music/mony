@@ -3,7 +3,8 @@
 /* ---------- basics ---------- */
 const KEY = 'mony.v1';
 const DEFAULT_TAGS = ['design', 'video', 'music', 'gig', 'other']; // starting set; each user edits theirs in Splits
-const APPS = ['Whish', 'Neo', 'Other'];
+/* App names (Whish, Neo, …) are whatever you call them in Splits; order follows your wallets. */
+const appList = () => [...new Set(S.wallets.map(w => w.app).filter(Boolean))];
 const BACKUP_DAYS = 14;
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -116,8 +117,8 @@ function savingsPending() {
   return r2(t);
 }
 /* Money per app: Neo = transfers out, Whish (the inbox app) = what stays. Prepaid isn't counted: it already left. */
-/* A transfer fee is either paid on top from the inbox ("Whish took $182") or taken out of
-   what arrives ("Neo got $178"). Only on-top fees lower what stays in the inbox; inside fees
+/* A transfer fee is either paid on top from the inbox ("Neo got $180, Whish sent $182") or taken out of
+   what arrives ("Neo got $178, Whish sent $180"). Only on-top fees lower what stays in the inbox; inside fees
    lower the wallet shares in that app instead. */
 const feeTotal = p => r2(Object.values(p.fees || {}).reduce((a, v) => a + (+v || 0), 0));
 const feeTop = p => r2(Object.entries(p.fees || {}).reduce((a, [app, v]) => a + ((p.feeMode || {})[app] === 'inside' ? 0 : (+v || 0)), 0));
@@ -153,8 +154,17 @@ function appTotals(ps) {
   }
   return t;
 }
-const appKeys = t => Object.keys(t).sort((a, b) => (APPS.indexOf(a) + 99 * (APPS.indexOf(a) < 0)) - (APPS.indexOf(b) + 99 * (APPS.indexOf(b) < 0)) || a.localeCompare(b));
+const appKeys = t => { const L = appList(), ix = a => (L.indexOf(a) < 0 ? 99 : L.indexOf(a)); return Object.keys(t).sort((a, b) => ix(a) - ix(b) || a.localeCompare(b)); };
 const stayApp = () => (inboxWallet() || {}).app || 'Whish';
+const outApps = () => appList().filter(a => a !== stayApp());
+const toLabel = () => `To ${outApps().join(' + ') || 'other apps'}`;
+function renameApp(from, to) {
+  S.wallets.forEach(w => { if (w.app === from) w.app = to; });
+  S.payments.forEach(p => {
+    p.shares.forEach(s => { if (s.app === from) s.app = to; });
+    for (const k of ['hops', 'fees', 'feeMode']) if (p[k] && from in p[k]) { p[k][to] = p[k][from]; delete p[k][from]; }
+  });
+}
 const appLabel = a => (a === stayApp() ? `Stays in ${a}` : `To ${a}`);
 function appBlock(t, withCopy) {
   return appKeys(t).map(a => `<div class="kv app-kv"><span>${esc(appLabel(a))}</span><span><b>${money(t[a])}</b>${withCopy && a !== stayApp()
@@ -459,7 +469,7 @@ function updatePreview() {
   if (!(amt > 0)) { pv.innerHTML = '<div class="empty">Enter the amount to see your transfers.</div>'; return; }
   if (!(take >= 0) || take >= amt) { pv.innerHTML = '<div class="empty">Prepaid has to be less than the amount.</div>'; return; }
   if (tot !== 100) { pv.innerHTML = '<div class="empty">Percentages must add up to 100%.</div>'; return; }
-  pv.innerHTML = (take > 0 ? `<div class="kv"><span>Prepaid, already out of Whish</span><span>−${money(take)}</span></div><div class="kv" style="margin-bottom:6px"><span>Split on</span><span>${money(amt - take)}</span></div>` : '')
+  pv.innerHTML = (take > 0 ? `<div class="kv"><span>Prepaid, already out of ${esc(stayApp())}</span><span>−${money(take)}</span></div><div class="kv" style="margin-bottom:6px"><span>Split on</span><span>${money(amt - take)}</span></div>` : '')
     + txRows(computeShares(amt, take, d.pcts), false)
     + `<div style="background:var(--white);border-radius:var(--r-sm);margin-top:10px;padding:8px 14px">${appBlock(appTotals([{ shares: computeShares(amt, take, d.pcts), takeOff: take }]), false)}</div>`;
 }
@@ -530,7 +540,10 @@ function feeLabels() {
   const ok = fee > 0 && fee < amt;
   m.hidden = !ok;
   const [top, inside] = $$('[data-act=feeMode]', m);
-  if (ok) { top.textContent = `${home} took ${money(amt + fee)}`; inside.textContent = `${app} got ${money(amt - fee)}`; }
+  if (ok) {
+    top.innerHTML = `<b>${esc(app)} got ${money(amt)}</b><small>${esc(home)} sent ${money(amt + fee)}</small>`;
+    inside.innerHTML = `<b>${esc(app)} got ${money(amt - fee)}</b><small>${esc(home)} sent ${money(amt)}</small>`;
+  }
   $('#feeHint').textContent = !ok ? `In dollars. Leave it empty if it’s free.`
     : m.dataset.mode === 'inside' ? `The fee came out of the transfer, so your ${app} wallets get ${money(fee)} less.`
     : `The fee was paid on top, so ${money(fee)} less stays in ${home}.`;
@@ -551,8 +564,7 @@ function viewPay(id) {
 
   const row = s => {
     const hopFee = s.type === 'hop' && p.fees ? +p.fees[s.app] || 0 : 0;
-    const inside = s.type === 'hop' && (p.feeMode || {})[s.app] === 'inside';
-    const label = s.type === 'hop' ? `${esc(home)} → ${esc(s.app)}${hopFee ? ` · ${money(hopFee)} fee ${inside ? `taken out, ${esc(s.app)} got ${money(s.amount)}` : `on top, ${esc(home)} paid ${money(s.amount + hopFee)}`}` : ''}` : `${esc(shareName(s.s))} <span class="muted">· ${esc(s.app)}</span>`;
+    const label = s.type === 'hop' ? `${esc(home)} → ${esc(s.app)}${hopFee ? ` · ${esc(s.app)} got ${money(s.amount)}, ${esc(home)} sent ${money(s.amount + hopFee)} (${money(hopFee)} fee)` : ''}` : `${esc(shareName(s.s))} <span class="muted">· ${esc(s.app)}</span>`;
     if (s.done) return `<div class="step done">
         <span class="dot ok">${CHECK}</span>
         <div class="step-main"><div class="step-amt">${money(s.amount)}</div><div class="step-to">${label}</div></div>
@@ -771,7 +783,7 @@ function viewWaiting() {
       <div class="lbl2" style="margin:14px 0 6px">If everyone pays</div>
       <div class="gbar"><i style="width:${inc / barMax * 100}%"></i><i class="g" style="width:${owed / barMax * 100}%"></i>${tgt ? `<span class="mk" style="left:${tgt / barMax * 100}%"></span>` : ''}</div>
       <p style="margin:8px 0 2px">${monthLabel(mk).split(' ')[0]} lands at <b>${money(land)}</b>${tgt ? ` — ${land >= tgt ? `<b>target hit</b>${land > tgt ? ` (+${money(land - tgt)})` : ''}` : `${Math.round(land / tgt * 100)}% of target`}` : ''}</p>
-      <p class="small muted" style="margin:0">≈ ${money(toNeo)} to Neo · ${money(toSav)} into savings</p>
+      <p class="small muted" style="margin:0">≈ ${money(toNeo)} ${esc(toLabel().replace(/^To/, 'to'))} · ${money(toSav)} into savings</p>
     </div>` : ''}
   </div>
   ${list.length ? `<div class="card">${list.map(w => `<div class="item">
@@ -825,7 +837,7 @@ function viewHistory() {
     <div class="between"><span class="lbl2" style="margin:0">${year} so far</span><span class="small muted">${yp.length} payment${yp.length === 1 ? '' : 's'}</span></div>
     <div class="big-num" style="margin:4px 0 12px">${money(yp.reduce((a, p) => a + p.amount, 0))}</div>
     <div class="mini3">
-      <div><span>To Neo</span><b>${money(out)}</b></div>
+      <div><span>${esc(toLabel())}</span><b>${money(out)}</b></div>
       <div><span>Stays in ${esc(home)}</span><b>${money(t[home] || 0)}</b></div>
       <div><span>Paydays</span><b>${yp.length}</b></div>
     </div></div>
@@ -848,7 +860,7 @@ function monthSection(m) {
     </summary>
     <div class="month-body">
       ${pays.length ? `<div class="mini3">
-        <div><span>To Neo</span><b>${money(out)}</b></div>
+        <div><span>${esc(toLabel())}</span><b>${money(out)}</b></div>
         <div><span>Stays in ${esc(home)}</span><b>${money(t[home] || 0)}</b></div>
         <div><span>Biggest</span><b>${money(Math.max(...pays.map(p => p.amount)))}</b></div>
       </div>` : ''}
@@ -930,10 +942,19 @@ function restorePicked(file) {
 /* ---------- splits / settings ---------- */
 function viewSplits() {
   return `<h1>Splits</h1>
+  <h2>Apps</h2>
+  <div class="card">
+    ${appList().map(a => `<div class="goal-row tag-row">
+      <input type="text" value="${esc(a)}" data-appname="${esc(a)}" aria-label="App name">
+      <span class="small muted">${a === stayApp() ? 'inbox' : `${S.wallets.filter(w => w.app === a).length} wallet${S.wallets.filter(w => w.app === a).length === 1 ? '' : 's'}`}</span><span></span></div>`).join('')}
+    <p class="small muted" style="margin:10px 0 0">Rename an app and every wallet in it, every transfer step and every total follows.</p>
+  </div>
+  <datalist id="appNames">${appList().map(a => `<option value="${esc(a)}">`).join('')}</datalist>
+
   <h2>Wallets</h2>
   <div class="card">${S.wallets.map((w, i) => `<div class="wrow">
       <div class="g"><input type="text" value="${esc(w.name)}" data-wf="name" data-id="${w.id}" aria-label="Wallet name">
-        <select data-wf="app" data-id="${w.id}" aria-label="App">${APPS.map(a => `<option ${w.app === a ? 'selected' : ''}>${a}</option>`).join('')}</select></div>
+        <input type="text" list="appNames" value="${esc(w.app)}" data-wf="app" data-id="${w.id}" aria-label="App"></div>
       <div class="between">
         <div class="wflags">
           <label><input type="radio" name="inbox" data-wf="inbox" data-id="${w.id}" ${w.inbox ? 'checked' : ''}> Inbox</label>
@@ -1125,7 +1146,7 @@ const ACT = {
   backup,
   restore() { const f = $('#restoreFile'); f.value = ''; f.click(); },
   wAdd() {
-    const w = { id: uid(), name: 'New wallet', app: 'Neo', inbox: false, savings: false };
+    const w = { id: uid(), name: 'New wallet', app: outApps()[0] || stayApp(), inbox: false, savings: false };
     S.wallets.push(w); S.splits.forEach(s => { s.pcts[w.id] = 0; }); save(); render();
   },
   wMove(el) {
@@ -1186,7 +1207,7 @@ document.addEventListener('change', e => {
   if (t.dataset.wf) {
     const w = wallet(t.dataset.id); const f = t.dataset.wf;
     if (f === 'name') { const v = t.value.trim(); if (!v) { t.value = w.name; return; } w.name = v; }
-    else if (f === 'app') w.app = t.value;
+    else if (f === 'app') { const v = t.value.trim(); if (!v) { t.value = w.app; return; } w.app = v; }
     else S.wallets.forEach(x => { x[f] = x === w; });
     save(); render(); return;
   }
@@ -1194,6 +1215,13 @@ document.addEventListener('change', e => {
     const v = num(t.value);
     if (!(v >= 0)) { t.value = S[t.dataset.set]; toast('Enter a number'); return; }
     S[t.dataset.set] = r2(v); if (t.dataset.set === 'startSavings') S.startSet = true; save(); toast('Saved'); return;
+  }
+  if (t.dataset.appname != null) {
+    const from = t.dataset.appname, to = t.value.trim();
+    if (!to) { t.value = from; return toast('An app needs a name'); }
+    if (to === from) return;
+    if (appList().some(a => a !== from && a.toLowerCase() === to.toLowerCase())) { t.value = from; return toast('You already have an app with that name'); }
+    renameApp(from, to); save(); render(); toast(`Renamed to ${to}`); return;
   }
   if (t.dataset.tagi != null) {
     const i = +t.dataset.tagi, old = S.tags[i], v = t.value.trim();
