@@ -116,7 +116,28 @@ function savingsPending() {
   return r2(t);
 }
 /* Money per app: Neo = transfers out, Whish (the inbox app) = what stays, incl. job costs. */
+/* A transfer fee is either paid on top from the inbox ("Whish took $182") or taken out of
+   what arrives ("Neo got $178"). Only on-top fees lower what stays in the inbox; inside fees
+   lower the wallet shares in that app instead. */
 const feeTotal = p => r2(Object.values(p.fees || {}).reduce((a, v) => a + (+v || 0), 0));
+const feeTop = p => r2(Object.entries(p.fees || {}).reduce((a, [app, v]) => a + ((p.feeMode || {})[app] === 'inside' ? 0 : (+v || 0)), 0));
+function lastFeeMode(app) {
+  const ps = [...S.payments].sort((a, b) => b.created - a.created);
+  for (const p of ps) if (p.feeMode && p.feeMode[app]) return p.feeMode[app];
+  return 'top';
+}
+function takeFeeInside(p, app, fee) { // spread the fee over that app's wallets, biggest takes the rounding
+  const sh = p.shares.filter(s => !s.auto && shareApp(s) === app);
+  const total = sh.reduce((a, s) => a + s.amount, 0); if (!total) return;
+  let left = fee;
+  sh.forEach(s => { if (s.orig == null) s.orig = s.amount; });
+  const big = sh.reduce((a, b) => (b.amount > a.amount ? b : a));
+  sh.forEach(s => { if (s !== big) { const cut = Math.round(fee * s.orig / total); s.amount = r2(s.orig - cut); left = r2(left - cut); } });
+  big.amount = r2(big.orig - left);
+}
+function restoreFeeInside(p, app) {
+  p.shares.forEach(s => { if (shareApp(s) === app && s.orig != null) { s.amount = s.orig; delete s.orig; } });
+}
 function lastFee(app) {
   const ps = [...S.payments].sort((a, b) => b.created - a.created);
   for (const p of ps) if (p.fees && +p.fees[app] > 0) return +p.fees[app];
@@ -128,7 +149,7 @@ function appTotals(ps) {
   for (const p of ps) {
     for (const s of p.shares) add(shareApp(s), s.amount);
     const inb = p.shares.find(s => s.inbox);
-    add(inb ? shareApp(inb) : (inboxWallet() || {}).app || 'Whish', r2((p.takeOff || 0) - feeTotal(p)));
+    add(inb ? shareApp(inb) : (inboxWallet() || {}).app || 'Whish', r2((p.takeOff || 0) - feeTop(p)));
   }
   return t;
 }
@@ -228,16 +249,19 @@ function render() {
   document.body.classList.toggle('gate', gated);
   if (gated) { document.body.dataset.view = 'gate'; $('#view').innerHTML = viewGate(); return; }
   const [name, arg] = (location.hash.slice(1) || 'home').split('/');
-  document.body.dataset.view = name in { home: 1, new: 1, pay: 1, savings: 1, waiting: 1, history: 1, splits: 1 } ? name : 'home';
-  const views = { home: viewHome, new: viewNew, pay: viewPay, savings: viewSavings, waiting: viewWaiting, history: viewHistory, splits: viewSplits };
+  document.body.dataset.view = name in { home: 1, new: 1, edit: 1, pay: 1, savings: 1, waiting: 1, history: 1, splits: 1 } ? name : 'home';
+  const views = { home: viewHome, new: viewNew, edit: viewNew, pay: viewPay, savings: viewSavings, waiting: viewWaiting, history: viewHistory, splits: viewSplits };
   const fn = views[name] || viewHome;
-  if (name === 'new' && (!draft || draft.forArg !== (arg || ''))) draft = newDraft(arg);
+  const form = name === 'new' || name === 'edit';
+  if (form && (!draft || draft.forArg !== name + '/' + (arg || ''))) { draft = name === 'edit' ? editDraft(arg) : newDraft(arg); if (draft) draft.forArg = name + '/' + (arg || ''); }
+  if (name === 'edit' && !draft) { go('history', true); return; }
   $('#view').innerHTML = fn(arg);
-  const tab = { new: 'home', pay: 'home' }[name] || name;
+  const tab = { new: 'home', pay: 'home', edit: 'history' }[name] || name;
   $$('.tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === tab));
-  if (name === 'new') updatePreview();
-  if (name !== 'new') draft = null;
+  if (form) updatePreview();
+  if (!form) draft = null;
   if (window.MonySync) MonySync.paint();
+  if (name === 'pay') feeLabels();
   if (name === 'splits' && window.caches) caches.keys().then(k => { const v = k.find(x => x.startsWith('mony-')); const el = $('#appVersion'); if (el && v) el.textContent = 'BROKE ' + v.replace('mony-', ''); }).catch(() => {});
 }
 window.addEventListener('hashchange', () => { closeSheet(); render(); $('#view').scrollTop = 0; });
@@ -320,7 +344,6 @@ function viewHome() {
   const pct = tgt ? Math.min(100, inc / tgt * 100) : 0;
   const left = r2(tgt - inc);
   return `${backupBanner()}
-  ${!S.startSet ? '<div class="banner"><span>Already have savings? Add them first.</span><a class="btn sm" href="#savings" style="text-decoration:none">Add</a></div>' : ''}
   ${memoryOnly ? '<div class="banner"><span>Storage is blocked — nothing will be kept.</span></div>' : ''}
   ${pend.slice(0, 1).map(p => {
     const st = steps(p), done = st.filter(s => s.done).length;
@@ -348,22 +371,29 @@ function newDraft(waitingId) {
   const sp = S.splits.find(s => s.id === S.defaultSplit) || S.splits[0];
   const d = {
     forArg: waitingId || '', amount: '', client: '', tag: S.tags[0] || '', date: todayStr(),
-    splitId: sp.id, pcts: { ...sp.pcts }, adjust: false, takeOff: '', waitingId: null,
+    splitId: sp.id, pcts: { ...sp.pcts }, adjust: false, takeOff: '', waitingId: null, done: waitingId === 'past', editId: null,
   };
   const w = waitingId && S.waiting.find(x => x.id === waitingId);
   if (w) { d.client = w.client; d.amount = String(w.amount); d.waitingId = w.id; }
   return d;
 }
+function editDraft(id) {
+  const p = S.payments.find(x => x.id === id); if (!p) return null;
+  const pcts = {}; S.wallets.forEach(w => { pcts[w.id] = +(p.pcts || {})[w.id] || 0; });
+  const sp = S.splits.find(s => S.wallets.every(w => (+s.pcts[w.id] || 0) === pcts[w.id]));
+  return { amount: String(p.amount), client: p.client || '', tag: p.tag, date: p.date, splitId: sp ? sp.id : null, pcts,
+    adjust: !sp, takeOff: p.takeOff ? String(p.takeOff) : '', waitingId: null, done: !isPending(p), editId: p.id };
+}
 function viewNew() {
-  const d = draft;
-  return `<div class="top"><a href="#home">Cancel</a><span></span></div>
-  <h1>I got paid</h1>
+  const d = draft, editing = !!d.editId, past = !editing && d.done;
+  return `<div class="top"><a href="${editing || past ? '#history' : '#home'}">Cancel</a><span></span></div>
+  <h1>${editing ? 'Edit payment' : past ? 'Add a past payment' : 'I got paid'}</h1>
   <form id="payForm" onsubmit="return false" autocomplete="off">
     <label class="fld"><span>Amount received</span>
       <div class="amt-in"><b>$</b><input id="f-amount" inputmode="decimal" value="${esc(d.amount)}" placeholder="0"></div>
     </label>
     <div id="owedNote" class="note"></div>
-    ${S.waiting.length ? `<div class="fld"><span>From Waiting on</span><div class="chips">${S.waiting.map(x =>
+    ${S.waiting.length && !editing ? `<div class="fld"><span>From Waiting on</span><div class="chips">${S.waiting.map(x =>
       `<button type="button" class="chip ${d.waitingId === x.id ? 'on' : ''}" data-act="pickWaiting" data-id="${x.id}">${esc(x.client)} · ${money(x.amount)}</button>`).join('')}</div></div>` : ''}
     <label class="fld"><span>Client</span><input id="f-client" type="text" list="clientList" value="${esc(d.client)}" placeholder="Who paid"></label>
     <datalist id="clientList">${clients().map(c => `<option value="${esc(c)}">`).join('')}</datalist>
@@ -379,10 +409,13 @@ function viewNew() {
     </div>
     <label class="fld"><span>Take off first <span style="font-weight:500">(job costs, optional)</span></span>
       <input id="f-take" inputmode="decimal" value="${esc(d.takeOff)}" placeholder="0"></label>
+    <button type="button" class="toggle ${d.done ? 'on' : ''}" data-act="toggleDone" aria-pressed="${d.done}"><i></i><span><b>Transfers already done</b><small>For payments you already split before logging them here</small></span></button>
     <h2>Transfers</h2>
     <div class="card" id="preview"></div>
+    ${editing ? '<p class="small muted">Changing the amount, take-off or split recalculates its transfers and starts them over.</p>' : ''}
     <p class="err" id="payErr"></p>
-    <button type="button" class="btn primary block" data-act="savePay" style="min-height:54px;font-size:17px">Split it</button>
+    <button type="button" class="btn primary block" data-act="savePay" style="min-height:54px;font-size:17px">${editing ? 'Save changes' : d.done ? 'Save payment' : 'Split it'}</button>
+    ${editing ? `<button type="button" class="btn danger block" data-act="delPay" data-id="${d.editId}" style="margin-top:10px">Delete payment</button>` : ''}
   </form>`;
 }
 function readForm() {
@@ -436,6 +469,18 @@ function savePayment() {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d.date)) return (err.textContent = 'Pick a date.');
   const sp = S.splits.find(s => s.id === d.splitId);
   const same = sp && S.wallets.every(w => (+sp.pcts[w.id] || 0) === (+d.pcts[w.id] || 0));
+  const markDone = p => { p.shares.forEach(s => { s.done = true; }); p.hops = p.hops || {}; steps(p).forEach(s => { if (s.type === 'hop') p.hops[s.app] = true; }); };
+  if (d.editId) {
+    const p = S.payments.find(x => x.id === d.editId); if (!p) return go('history', true);
+    const moneyChanged = r2(amt) !== p.amount || r2(take) !== r2(p.takeOff || 0) || pctString(d.pcts) !== pctString(p.pcts || {});
+    Object.assign(p, { date: d.date, client: d.client.trim(), tag: d.tag, splitName: sp ? sp.name + (same ? '' : ' (adjusted)') : (moneyChanged ? 'Custom' : p.splitName) });
+    if (moneyChanged) {
+      Object.assign(p, { amount: r2(amt), takeOff: r2(take), pcts: { ...d.pcts }, pctLabel: pctString(d.pcts), shares: computeShares(amt, take, d.pcts), hops: {}, fees: {}, feeMode: {} });
+    }
+    if (d.done) markDone(p);
+    save(); draft = null; toast(moneyChanged && !d.done ? 'Saved — its transfers start over' : 'Payment updated');
+    return go('history', true);
+  }
   const p = {
     id: uid(), created: Date.now(), date: d.date, client: d.client.trim(), tag: d.tag,
     amount: r2(amt), takeOff: r2(take), splitName: sp ? sp.name + (same ? '' : ' (adjusted)') : 'Custom',
@@ -449,13 +494,27 @@ function savePayment() {
       else S.waiting = S.waiting.filter(x => x !== w);
     }
   }
+  if (d.done) markDone(p);
   S.payments.push(p); save(); draft = null;
-  go('pay/' + p.id, true);
+  go(d.done ? 'history' : 'pay/' + p.id, true);
+  if (d.done) toast('Payment added');
 }
 
 /* ---------- to split: unlock path ---------- */
 const LOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
 let justUnlocked = null, justFinished = false;
+function feeLabels() {
+  const box = $('.fee[data-amt]'), m = $('#feeMode'); if (!box || !m) return;
+  const amt = +box.dataset.amt, home = box.dataset.home, app = box.dataset.app;
+  const raw = ($('#hopFee') || {}).value || '', fee = raw.trim() === '' ? 0 : num(raw);
+  const ok = fee > 0 && fee < amt;
+  m.hidden = !ok;
+  const [top, inside] = $$('[data-act=feeMode]', m);
+  if (ok) { top.textContent = `${home} took ${money(amt + fee)}`; inside.textContent = `${app} got ${money(amt - fee)}`; }
+  $('#feeHint').textContent = !ok ? `In dollars. Leave it empty if it’s free.`
+    : m.dataset.mode === 'inside' ? `The fee came out of the transfer, so your ${app} wallets get ${money(fee)} less.`
+    : `The fee was paid on top, so ${money(fee)} less stays in ${home}.`;
+}
 function viewPay(id) {
   const p = S.payments.find(x => x.id === id);
   if (!p) return `<div class="top"><a href="#home">← Home</a></div><p class="empty">That payment doesn’t exist anymore.</p>`;
@@ -463,7 +522,7 @@ function viewPay(id) {
   const lastDone = [...st].reverse().find(s => s.done);
   const n = st.indexOf(cur) + 1, doneN = st.filter(s => s.done).length;
   const inbox = p.shares.find(s => s.inbox);
-  const fee = feeTotal(p);
+  const fee = feeTop(p);
   const stay = r2((inbox ? inbox.amount : 0) + (p.takeOff || 0) - fee), home = inbox ? shareApp(inbox) : stayApp();
   const feeNote = fee ? ` after ${money(fee)} fee` : '';
   const finished = S.payments.filter(x => !isPending(x)).sort((a, b) => a.created - b.created);
@@ -472,7 +531,8 @@ function viewPay(id) {
 
   const row = s => {
     const hopFee = s.type === 'hop' && p.fees ? +p.fees[s.app] || 0 : 0;
-    const label = s.type === 'hop' ? `${esc(home)} → ${esc(s.app)}${hopFee ? ` · ${money(hopFee)} fee` : ''}` : `${esc(shareName(s.s))} <span class="muted">· ${esc(s.app)}</span>`;
+    const inside = s.type === 'hop' && (p.feeMode || {})[s.app] === 'inside';
+    const label = s.type === 'hop' ? `${esc(home)} → ${esc(s.app)}${hopFee ? ` · ${money(hopFee)} fee ${inside ? `taken out, ${esc(s.app)} got ${money(s.amount)}` : `on top, ${esc(home)} paid ${money(s.amount + hopFee)}`}` : ''}` : `${esc(shareName(s.s))} <span class="muted">· ${esc(s.app)}</span>`;
     if (s.done) return `<div class="step done">
         <span class="dot ok">${CHECK}</span>
         <div class="step-main"><div class="step-amt">${money(s.amount)}</div><div class="step-to">${label}</div></div>
@@ -490,12 +550,17 @@ function viewPay(id) {
         </div>
         ${s.type === 'hop' ? (() => {
           const saved = p.fees && p.fees[s.app] != null ? p.fees[s.app] : '', last = lastFee(s.app);
-          return `<div class="fee">
+          const mode = (p.feeMode || {})[s.app] || lastFeeMode(s.app);
+          return `<div class="fee" data-amt="${s.amount}" data-home="${esc(home)}" data-app="${esc(s.app)}">
             <label for="hopFee">Transfer fee</label>
             <div class="fee-in"><b>$</b><input id="hopFee" inputmode="decimal" placeholder="0" value="${saved === 0 ? '' : esc(saved)}" autocomplete="off"></div>
             ${last && saved === '' ? `<button type="button" class="chip" data-act="feeLast" data-v="${last}">Last time ${money(last)}</button>` : ''}
           </div>
-          <p class="fee-hint">In dollars. Paid from what stays in ${esc(home)}. Leave it empty if it’s free.</p>`;
+          <div class="fee-mode" id="feeMode" data-mode="${mode}">
+            <button type="button" class="chip ${mode === 'top' ? 'on' : ''}" data-act="feeMode" data-v="top"></button>
+            <button type="button" class="chip ${mode === 'inside' ? 'on' : ''}" data-act="feeMode" data-v="inside"></button>
+          </div>
+          <p class="fee-hint" id="feeHint"></p>`;
         })() : ''}
         <button class="btn primary block moved" data-act="step" data-key="${s.key}">${CHECK}<span>Moved it</span></button>
       </div>`;
@@ -519,7 +584,8 @@ function viewPay(id) {
   ${stay ? `<div class="step stay"><span class="dot ok">${CHECK}</span>
     <div class="step-main"><div class="step-amt">${money(stay)}</div><div class="step-to">stays in ${esc(home)}${feeNote} · nothing to do</div></div></div>` : ''}
   ${all ? '<a class="btn primary block" href="#home" style="text-align:center;text-decoration:none;line-height:22px;margin-top:16px">Done</a>' : '<p class="small muted" style="margin-top:12px">Each move unlocks the next. This stays on Home until the last one.</p>'}
-  <button class="btn danger block" data-act="delPay" data-id="${p.id}" style="margin-top:18px">Delete payment</button>`;
+  <div class="btns" style="margin-top:18px"><a class="btn block" href="#edit/${p.id}" style="text-align:center;text-decoration:none;flex:1">Edit payment</a></div>
+  <button class="btn danger block" data-act="delPay" data-id="${p.id}" style="margin-top:8px">Delete payment</button>`;
 }
 
 /* ---------- savings ---------- */
@@ -539,17 +605,9 @@ function viewSavings() {
   }).join('');
   const wds = [...S.withdrawals].sort((a, b) => (b.date + b.created).localeCompare(a.date + a.created));
   return `<h1>Savings</h1>
-  ${!S.startSet ? `<div class="card lime start-card">
-    <div class="lbl2" style="margin:0 0 6px">Starting point</div>
-    <p class="start-q">How much is in your savings account right now?</p>
-    <p class="small muted" style="margin:0 0 14px">You didn’t start from zero. Add what you already have and BROKE counts from the real number.</p>
-    <div class="fee-in light"><b>$</b><input id="startAmt" inputmode="decimal" placeholder="0"></div>
-    <p class="err" id="startErr"></p>
-    <div class="btns" style="margin-top:12px"><button class="btn primary" data-act="startSave">Add it</button><button class="btn ghost" data-act="startZero">Starting from zero</button></div>
-  </div>` : ''}
   <div class="card">
     <div class="big-num">${money(total)}</div>
-    ${S.startSet ? `<button class="start-line" data-act="startEdit">${+S.startSavings ? `Includes ${money(S.startSavings)} you had before BROKE` : 'Started from zero'} · <u>Edit</u></button>` : ''}
+    <button class="start-line" data-act="startEdit">${+S.startSavings ? `Includes ${money(S.startSavings)} you had before BROKE · <u>Edit</u>` : 'Had savings before BROKE? <u>Add them</u>'}</button>
     <div class="bar" style="margin-top:14px">
       <i class="floor" style="width:${at(Math.min(total, floor))}%"></i>
       ${total > floor ? `<i style="left:${at(floor)}%;width:${at(total) - at(floor)}%;border-radius:0 999px 999px 0"></i>` : ''}
@@ -742,6 +800,7 @@ function viewHistory() {
   const t = appTotals(yp), home = stayApp();
   const out = r2(Object.keys(t).filter(a => a !== home).reduce((a, k) => a + t[k], 0));
   return `<h1>History</h1>
+  <button class="btn block" data-act="addPast" style="margin:-6px 0 12px">+ Add a past payment</button>
   ${months.length ? `<div class="card">
     <div class="between"><span class="lbl2" style="margin:0">${year} so far</span><span class="small muted">${yp.length} payment${yp.length === 1 ? '' : 's'}</span></div>
     <div class="big-num" style="margin:4px 0 12px">${money(yp.reduce((a, p) => a + p.amount, 0))}</div>
@@ -797,8 +856,10 @@ function payDetail(id) {
       ${p.shares.filter(s => s.amount).map(s => `<div class="kv"><span>${esc(shareName(s))}</span><span>${money(s.amount)}${s.done ? '' : ' · not moved'}</span></div>`).join('')}
       <div style="background:var(--white);border-radius:var(--r-sm);margin-top:10px;padding:8px 14px">${appBlock(t, false)}</div>
     </div>
+    ${feeTotal(p) ? `<p class="small muted" style="margin:8px 4px 0">Transfer fees: ${Object.entries(p.fees).filter(([, v]) => +v).map(([a, v]) => `${money(v)} ${(p.feeMode || {})[a] === 'inside' ? `taken out of ${esc(a)}` : 'paid on top'}`).join(', ')}</p>` : ''}
     <div class="btns" style="margin-top:12px">
-      <a class="btn primary block" href="#pay/${p.id}" style="text-align:center;text-decoration:none;line-height:22px">Open</a>
+      <button class="btn primary block" data-act="editPay" data-id="${p.id}">Edit</button>
+      <a class="btn block" href="#pay/${p.id}" style="text-align:center;text-decoration:none;line-height:22px">${isPending(p) ? 'Continue transfers' : 'See transfers'}</a>
       <button class="btn danger block" data-act="delPay" data-id="${p.id}">Delete payment</button>
     </div>`);
 }
@@ -957,6 +1018,9 @@ const ACT = {
   pickTag(el) { readForm(); draft.tag = el.dataset.v; render(); },
   pickSplit(el) { readForm(); const s = S.splits.find(x => x.id === el.dataset.id); draft.splitId = s.id; draft.pcts = { ...s.pcts }; render(); },
   toggleAdjust() { readForm(); draft.adjust = !draft.adjust; render(); },
+  toggleDone() { readForm(); draft.done = !draft.done; render(); },
+  addPast() { draft = null; go('new/past'); },
+  editPay(el) { closeSheet(); draft = null; go('edit/' + el.dataset.id); },
   pickWaiting(el) {
     readForm(); const w = S.waiting.find(x => x.id === el.dataset.id);
     if (draft.waitingId === w.id) { draft.waitingId = null; } else { draft.waitingId = w.id; draft.client = w.client; draft.amount = String(w.amount); }
@@ -973,7 +1037,11 @@ const ACT = {
         const raw = ($('#hopFee') || {}).value || '', fee = raw.trim() === '' ? 0 : num(raw);
         if (!(fee >= 0)) return toast('Enter the fee as a number, or leave it empty');
         if (fee >= cur.amount) return toast('That fee is bigger than the transfer');
-        p.fees = p.fees || {}; p.fees[cur.app] = r2(fee);
+        const mode = ($('#feeMode') || {}).dataset ? $('#feeMode').dataset.mode : 'top';
+        p.fees = p.fees || {}; p.feeMode = p.feeMode || {};
+        p.fees[cur.app] = r2(fee); p.feeMode[cur.app] = mode;
+        restoreFeeInside(p, cur.app);
+        if (fee > 0 && mode === 'inside') takeFeeInside(p, cur.app, r2(fee));
       }
       set(cur, true);
       const next = st[st.indexOf(cur) + 1];
@@ -981,13 +1049,14 @@ const ACT = {
       try { navigator.vibrate && navigator.vibrate(next ? 15 : [20, 40, 30]); } catch (e) {}
     } else if (last && last.key === k) {
       set(last, false);
-      if (last.type === 'hop') p.shares.forEach(s => { if (!s.auto && shareApp(s) === last.app) s.done = false; });
+      if (last.type === 'hop') { p.shares.forEach(s => { if (!s.auto && shareApp(s) === last.app) s.done = false; }); restoreFeeInside(p, last.app); }
     } else return;
     save(); render();
     const target = justFinished ? null : $('.step.current');
     if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' }); else $('#view').scrollTo({ top: 0, behavior: 'smooth' });
   },
-  feeLast(el) { const i = $('#hopFee'); if (i) { i.value = el.dataset.v; el.remove(); } },
+  feeLast(el) { const i = $('#hopFee'); if (i) { i.value = el.dataset.v; el.remove(); feeLabels(); } },
+  feeMode(el) { const m = $('#feeMode'); m.dataset.mode = el.dataset.v; $$('[data-act=feeMode]').forEach(b => b.classList.toggle('on', b === el)); feeLabels(); },
   startSave() {
     const v = num(($('#startAmt') || {}).value), err = $('#startErr');
     if (!(v >= 0)) { if (err) err.textContent = 'Enter the amount, or tap “Starting from zero”.'; return; }
@@ -1005,7 +1074,7 @@ const ACT = {
   delPay(el) {
     const p = S.payments.find(x => x.id === el.dataset.id);
     confirmSheet('Delete this payment?', `${esc(p.client || 'Payment')} · ${money(p.amount)} on ${dateLabel(p.date)}. Its ticked savings come off your savings total.`,
-      'Delete', () => { S.payments = S.payments.filter(x => x !== p); save(); if (location.hash.startsWith('#pay/')) go('home', true); else render(); toast('Deleted'); });
+      'Delete', () => { S.payments = S.payments.filter(x => x !== p); save(); draft = null; if (location.hash.startsWith('#pay/')) go('home', true); else if (location.hash.startsWith('#edit/')) go('history', true); else render(); toast('Deleted'); });
   },
   withdrawSheet,
   wdKind(el) { wd.kind = el.dataset.v; $('#wd-err').textContent = ''; wdUpdate(); },
@@ -1087,6 +1156,7 @@ document.addEventListener('click', e => {
   e.preventDefault(); f(el, e);
 });
 document.addEventListener('input', e => {
+  if (e.target.id === 'hopFee') { feeLabels(); return; }
   if (e.target.closest('#payForm')) { readForm(); updatePreview(); }
   else if (e.target.closest('#sheet') && sheetInput) sheetInput();
 });
@@ -1144,7 +1214,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   let reloading = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!hadController || reloading) return;
-    const busy = location.hash.startsWith('#new') || !$('#sheetWrap').hidden;
+    const busy = /^#(new|edit)/.test(location.hash) || !$('#sheetWrap').hidden;
     if (busy) { toast('Update ready — it loads next time'); return; }
     reloading = true; location.reload();
   });
