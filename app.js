@@ -2,7 +2,7 @@
 
 /* ---------- basics ---------- */
 const KEY = 'mony.v1';
-const TAGS = ['design', 'video', 'music', 'gig', 'other'];
+const DEFAULT_TAGS = ['design', 'video', 'music', 'gig', 'other']; // starting set; each user edits theirs in Splits
 const APPS = ['Whish', 'Neo', 'Other'];
 const BACKUP_DAYS = 14;
 const $ = (s, r = document) => r.querySelector(s);
@@ -40,6 +40,7 @@ function defaults() {
     floor: 2500,
     startSavings: 0,
     goals: [],
+    tags: [...DEFAULT_TAGS],
     target: 1700,
     payments: [],
     withdrawals: [],
@@ -52,7 +53,8 @@ function migrate(d) {
   const base = defaults();
   if (!d || typeof d !== 'object') return base;
   for (const k of Object.keys(base)) if (d[k] === undefined) d[k] = base[k];
-  for (const k of ['wallets', 'splits', 'payments', 'withdrawals', 'waiting', 'goals']) if (!Array.isArray(d[k])) d[k] = base[k];
+  for (const k of ['wallets', 'splits', 'payments', 'withdrawals', 'waiting', 'goals', 'tags']) if (!Array.isArray(d[k])) d[k] = base[k];
+  if (!d.tags.length) d.tags = [...DEFAULT_TAGS];
   if (!d.wallets.length) d.wallets = base.wallets;
   if (!d.splits.length) d.splits = base.splits;
   if (!d.splits.some(s => s.id === d.defaultSplit)) d.defaultSplit = d.splits[0].id;
@@ -335,7 +337,7 @@ function viewHome() {
 function newDraft(waitingId) {
   const sp = S.splits.find(s => s.id === S.defaultSplit) || S.splits[0];
   const d = {
-    forArg: waitingId || '', amount: '', client: '', tag: 'design', date: todayStr(),
+    forArg: waitingId || '', amount: '', client: '', tag: S.tags[0] || '', date: todayStr(),
     splitId: sp.id, pcts: { ...sp.pcts }, adjust: false, takeOff: '', waitingId: null,
   };
   const w = waitingId && S.waiting.find(x => x.id === waitingId);
@@ -355,7 +357,7 @@ function viewNew() {
       `<button type="button" class="chip ${d.waitingId === x.id ? 'on' : ''}" data-act="pickWaiting" data-id="${x.id}">${esc(x.client)} · ${money(x.amount)}</button>`).join('')}</div></div>` : ''}
     <label class="fld"><span>Client</span><input id="f-client" type="text" list="clientList" value="${esc(d.client)}" placeholder="Who paid"></label>
     <datalist id="clientList">${clients().map(c => `<option value="${esc(c)}">`).join('')}</datalist>
-    <div class="fld"><span>Tag</span><div class="chips">${TAGS.map(t =>
+    <div class="fld"><span>Tag</span><div class="chips">${S.tags.map(t =>
       `<button type="button" class="chip ${d.tag === t ? 'on' : ''}" data-act="pickTag" data-v="${t}">${t}</button>`).join('')}</div></div>
     <label class="fld"><span>Date</span><input id="f-date" type="date" value="${esc(d.date)}"></label>
     <div class="fld"><span>Split</span><div class="chips">${S.splits.map(s =>
@@ -728,7 +730,7 @@ function monthSection(m) {
   const tot = r2(pays.reduce((a, p) => a + p.amount, 0));
   const t = appTotals(pays), home = stayApp();
   const out = r2(Object.keys(t).filter(a => a !== home).reduce((a, k) => a + t[k], 0));
-  const byTag = TAGS.map(tag => [tag, r2(pays.filter(p => p.tag === tag).reduce((a, p) => a + p.amount, 0))]).filter(x => x[1] > 0).sort((a, b) => b[1] - a[1]);
+  const byTag = [...new Set([...S.tags, ...pays.map(p => p.tag).filter(Boolean)])].map(tag => [tag, r2(pays.filter(p => p.tag === tag).reduce((a, p) => a + p.amount, 0))]).filter(x => x[1] > 0).sort((a, b) => b[1] - a[1]);
   return `<details class="month" data-m="${m}" ${openMonths.has(m) ? 'open' : ''}>
     <summary>
       <div class="between"><b class="month-name">${monthLabel(m)}</b><span class="mid-num">${money(tot)}</span></div>
@@ -858,6 +860,16 @@ function viewSplits() {
       <input inputmode="decimal" value="${g.amount}" data-goal="amount" data-id="${g.id}" aria-label="Goal amount">
       <button class="btn ghost sm" data-act="goalDel" data-id="${g.id}" aria-label="Delete goal">✕</button></div>`).join('')}
     <button class="btn sm" data-act="goalAdd">Add goal</button>
+  </div>
+
+  <h2>Tags</h2>
+  <div class="card">
+    ${S.tags.map((t, i) => `<div class="goal-row tag-row">
+      <input type="text" value="${esc(t)}" data-tagi="${i}" aria-label="Tag name">
+      <span class="small muted">${S.payments.filter(p => p.tag === t).length} used</span>
+      <button class="btn ghost sm" data-act="tagDel" data-i="${i}" aria-label="Delete tag">✕</button></div>`).join('')}
+    <button class="btn sm" data-act="tagAdd">Add tag</button>
+    <p class="small muted" style="margin:10px 0 0">Renaming a tag renames it on past payments too. Deleting one keeps it on past payments.</p>
   </div>
 
   <h2>This month</h2>
@@ -1004,6 +1016,16 @@ const ACT = {
     confirmSheet(`Delete “${s.name}”?`, 'Past payments keep the split they used.', 'Delete split', () => { S.splits = S.splits.filter(x => x !== s); save(); render(); });
   },
   goalAdd() { S.goals.push({ id: uid(), name: 'Goal', amount: 1000 }); save(); render(); },
+  tagAdd() {
+    let n = 1, name = 'new tag'; while (S.tags.some(t => t.toLowerCase() === name)) name = `new tag ${++n}`;
+    S.tags.push(name); save(); render();
+    const inputs = $$('[data-tagi]'); const last = inputs[inputs.length - 1]; if (last) { last.focus(); last.select(); }
+  },
+  tagDel(el) {
+    if (S.tags.length <= 1) return toast('Keep at least one tag');
+    const t = S.tags[+el.dataset.i];
+    S.tags.splice(+el.dataset.i, 1); save(); render(); toast(`Removed “${t}” — past payments keep it`);
+  },
   goalDel(el) { S.goals = S.goals.filter(g => g.id !== el.dataset.id); save(); render(); },
 };
 
@@ -1030,6 +1052,15 @@ document.addEventListener('change', e => {
     const v = num(t.value);
     if (!(v >= 0)) { t.value = S[t.dataset.set]; toast('Enter a number'); return; }
     S[t.dataset.set] = r2(v); save(); toast('Saved'); return;
+  }
+  if (t.dataset.tagi != null) {
+    const i = +t.dataset.tagi, old = S.tags[i], v = t.value.trim();
+    if (!v) { t.value = old; return toast('A tag needs a name'); }
+    if (v === old) return;
+    if (S.tags.some((x, j) => j !== i && x.toLowerCase() === v.toLowerCase())) { t.value = old; return toast('You already have that tag'); }
+    S.tags[i] = v;
+    S.payments.forEach(p => { if (p.tag === old) p.tag = v; });
+    save(); render(); toast('Tag renamed'); return;
   }
   if (t.dataset.goal) {
     const g = S.goals.find(x => x.id === t.dataset.id);

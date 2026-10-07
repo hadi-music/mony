@@ -351,3 +351,5 @@ body[data-view=home] .jar-txt small{font-size:clamp(11px,4cqh,13px)}
   body[data-view=home] .mid-num{font-size:22px}
   body[data-view=home] .paid{margin:2px 0 10px}
 }
+.tag-row{grid-template-columns:1fr auto auto}
+.tag-row .small{white-space:nowrap}

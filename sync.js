@@ -109,7 +109,9 @@
     waiting: w => ({ id: w.id, client: str(w.client), amount: r2(w.amount), expected: w.expected || '', note: str(w.note), added: w.added || (w.created ? tsDate(w.created) : '') }),
     withdrawals: w => ({ id: w.id, date: w.date, amount: r2(w.amount), kind: w.kind || '', reason: str(w.reason) }),
   };
-  const settingsOf = s => ({ wallets: s.wallets, splits: s.splits, defaultSplit: s.defaultSplit, floor: s.floor, startSavings: s.startSavings || 0, goals: s.goals, target: s.target });
+  const settingsOf = s => ({ wallets: s.wallets, splits: s.splits, defaultSplit: s.defaultSplit, floor: s.floor, startSavings: s.startSavings || 0, goals: s.goals, tags: s.tags, target: s.target });
+  // a tag typed in the sheet: reuse an existing tag if it matches, else keep what was typed
+  const tagOf = (v, fallback) => { const t = str(v); if (!t) return fallback; return S.tags.find(x => x.toLowerCase() === t.toLowerCase()) || t; };
   function hash(o) { // cyrb53
     const s = JSON.stringify(o); let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
     for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677); }
@@ -125,12 +127,12 @@
       if (p && p.id) {
         const d = normDate(o.date); if (d) p.date = d;
         if ('client' in o) p.client = str(o.client);
-        if (TAGS.includes(str(o.tag).toLowerCase())) p.tag = str(o.tag).toLowerCase();
+        if ('tag' in o) p.tag = tagOf(o.tag, p.tag);
       } else { // a row typed by hand
         const amount = num(o.amount); if (!(amount > 0)) continue;
         const sp = def(), take = Math.max(0, num(o['take off first']) || 0);
         p = { id: str(o.id) || uid(), created: Date.now(), date: normDate(o.date) || todayStr(), client: str(o.client),
-          tag: TAGS.includes(str(o.tag).toLowerCase()) ? str(o.tag).toLowerCase() : 'other', amount: r2(amount), takeOff: r2(take < amount ? take : 0),
+          tag: tagOf(o.tag, S.tags[S.tags.length - 1] || ''), amount: r2(amount), takeOff: r2(take < amount ? take : 0),
           splitName: sp.name, pcts: { ...sp.pcts }, pctLabel: pctString(sp.pcts) };
         p.shares = computeShares(p.amount, p.takeOff, p.pcts);
         if (str(o.status).toLowerCase() !== 'to split') p.shares.forEach(s => { s.done = true; });
