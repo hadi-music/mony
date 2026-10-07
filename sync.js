@@ -24,9 +24,9 @@
   let state = 'idle', lastError = '', pendingToast = '';
 
   /* ---------- sign-in (redirect) ---------- */
-  function startAuth(mode) {
+  function startAuth(mode, back) {
     const st = Math.random().toString(36).slice(2);
-    setLS(OAUTH_KEY, JSON.stringify({ st, mode, back: location.hash && !/access_token|error=/.test(location.hash) ? location.hash : '#splits' }));
+    setLS(OAUTH_KEY, JSON.stringify({ st, mode, back: back || (location.hash && !/access_token|error=/.test(location.hash) ? location.hash : '#splits') }));
     const p = new URLSearchParams({ client_id: CLIENT_ID, redirect_uri: redirectUri(), response_type: 'token', scope: SCOPE, include_granted_scopes: 'true', state: st });
     if (mode === 'none') p.set('prompt', 'none');
     if (SY.email) p.set('login_hint', SY.email);
@@ -287,18 +287,22 @@
   window.MonySync = {
     changed() { if (!connected() || quiet) return; SY.dirty = true; saveSync(); paint(); schedule(); },
     paint,
+    needsSignIn: () => !!CLIENT_ID && !SY.connected,
     _test: { parseRemote, merge, buildGrid, snapshot, normDate },
   };
 
   document.addEventListener('DOMContentLoaded', () => {
     Object.assign(ACT, {
-      syncConnect() { startAuth(''); },
+      syncConnect(el) {
+        if (el && el.classList.contains('gbtn')) { el.disabled = true; el.querySelector('span').textContent = 'Opening Google…'; }
+        startAuth('', MonySync.needsSignIn() ? '#home' : null);
+      },
       syncReconnect() { startAuth('none'); },
       syncTap() { if (state === 'auth') startAuth('none'); else if (location.hash === '#splits') syncNow(); else go('splits'); },
       syncDisconnect() {
         confirmSheet('Disconnect Google?', 'Sync stops on this phone. Your data stays here, and the MONY sheet stays in your Drive.', 'Disconnect', () => {
           if (SY.token) fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(SY.token), { method: 'POST', mode: 'no-cors' }).catch(() => {});
-          SY = {}; saveSync(); state = 'idle'; paint(); toast('Disconnected');
+          SY = {}; saveSync(); state = 'idle'; render(); toast('Disconnected');
         }, false);
       },
     });

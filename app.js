@@ -214,6 +214,9 @@ function go(hash, replace) {
 /* ---------- router ---------- */
 let draft = null;
 function render() {
+  const gated = !!(window.MonySync && MonySync.needsSignIn());
+  document.body.classList.toggle('gate', gated);
+  if (gated) { $('#view').innerHTML = viewGate(); return; }
   const [name, arg] = (location.hash.slice(1) || 'home').split('/');
   const views = { home: viewHome, new: viewNew, pay: viewPay, savings: viewSavings, waiting: viewWaiting, history: viewHistory, splits: viewSplits };
   const fn = views[name] || viewHome;
@@ -226,6 +229,27 @@ function render() {
   if (window.MonySync) MonySync.paint();
 }
 window.addEventListener('hashchange', () => { closeSheet(); render(); window.scrollTo(0, 0); });
+
+/* ---------- sign-in gate ---------- */
+const G_LOGO = '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>';
+function viewGate() {
+  const R = 70, r = 40, gap = 5, splits = [40, 10, 15, 35];
+  const pt = (rad, t) => `${(100 + rad * Math.sin(t)).toFixed(2)} ${(100 - rad * Math.cos(t)).toFixed(2)}`;
+  let a = 0, slices = '', cuts = '';
+  splits.forEach((p, i) => {
+    const s = a, e = a + p / 100 * Math.PI * 2; a = e; const L = e - s > Math.PI ? 1 : 0;
+    slices += `<path class="${i === 3 ? 'sav' : 'rest'}" style="animation-delay:${i * 0.12}s" d="M${pt(R, s)}A${R} ${R} 0 ${L} 1 ${pt(R, e)}L${pt(r, e)}A${r} ${r} 0 ${L} 0 ${pt(r, s)}Z"/>`;
+    cuts += `<line x1="${pt(r - 2, s).split(' ')[0]}" y1="${pt(r - 2, s).split(' ')[1]}" x2="${pt(R + 2, s).split(' ')[0]}" y2="${pt(R + 2, s).split(' ')[1]}"/>`;
+  });
+  return `<section class="gate-wrap">
+    <svg class="gate-mark" viewBox="0 0 200 200" aria-hidden="true"><g class="gate-spin">${slices}<g class="gate-cuts" stroke-width="${gap}">${cuts}</g></g></svg>
+    <h1 class="gate-word">MONY</h1>
+    <p class="gate-tag">Pay yourself first.</p>
+    <p class="gate-sub">Split every payment. Tick off the transfers. Watch the jar fill.</p>
+    <button class="gbtn" data-act="syncConnect">${G_LOGO}<span>Sign in with Google</span></button>
+    <p class="gate-fine">Your money stays on this phone and in a sheet in your own Google Drive. MONY can only see the sheet it creates. <a href="privacy.html">Privacy</a></p>
+  </section>`;
+}
 
 /* ---------- home ---------- */
 function backupBanner() {

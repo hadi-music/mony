@@ -273,3 +273,26 @@ details.month[open] summary .month-name::after{transform:rotate(45deg);vertical-
 .sync-pill.warn{color:var(--warn);border-color:var(--warn)} .sync-pill.warn i{background:var(--warn)}
 .sync-pill.bad{color:var(--danger);border-color:var(--danger)} .sync-pill.bad i{background:var(--danger)}
 @keyframes blink{50%{opacity:.25}}
+
+/* sign-in gate */
+body.gate .appbar,body.gate .tabs{display:none}
+body.gate{padding-bottom:0}
+.gate-wrap{min-height:calc(100vh - env(safe-area-inset-top));display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px 8px calc(32px + env(safe-area-inset-bottom))}
+.gate-mark{width:min(52vw,210px);height:auto;margin-bottom:22px}
+.gate-mark .rest{fill:var(--ink)}
+.gate-mark .sav{fill:var(--accent)}
+.gate-mark path{transform-box:view-box;transform-origin:50% 50%;animation:slicein .6s cubic-bezier(.2,1.4,.4,1) both}
+.gate-cuts line{stroke:var(--bg)}
+.gate-spin{transform-box:view-box;transform-origin:50% 50%;animation:spin 60s linear infinite}
+.gate-word{font-size:44px;font-weight:900;letter-spacing:.2em;margin:0 0 6px;padding-left:.2em}
+.gate-tag{font-size:22px;font-weight:800;margin:0 0 6px}
+.gate-sub{color:var(--muted);max-width:290px;margin:0 0 34px}
+.gbtn{display:inline-flex;align-items:center;justify-content:center;gap:12px;width:min(100%,320px);min-height:56px;border-radius:999px;border:1px solid #747775;background:#fff;color:#1f1f1f;font-size:17px;font-weight:600;cursor:pointer;padding:0 22px}
+.gbtn svg{width:22px;height:22px;flex:none}
+.gbtn:active{transform:scale(.98)}
+.gbtn:disabled{opacity:.7}
+@media (prefers-color-scheme:dark){.gbtn{background:#131314;color:#e3e3e3;border-color:#8e918f}}
+.gate-fine{font-size:13px;color:var(--muted);max-width:300px;margin:22px 0 0}
+.gate-fine a{color:inherit}
+@keyframes slicein{from{transform:scale(.6) rotate(-30deg)}to{transform:none}}
+@media (prefers-reduced-motion:reduce){.gate-mark path,.gate-spin{animation:none}}
