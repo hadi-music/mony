@@ -178,7 +178,7 @@ function confirmSheet(title, body, okLabel, onOk, danger = true) {
   pendingConfirm = onOk;
   openSheet(`<h3>${esc(title)}</h3><p class="muted">${body}</p>
     <div class="btns" style="margin-top:18px">
-      <button class="btn primary block" data-act="confirmOk" style="${danger ? 'background:var(--danger);border-color:var(--danger);color:#fff' : ''}">${esc(okLabel)}</button>
+      <button class="btn primary block" data-act="confirmOk" style="${danger ? 'background:var(--hot);color:#fff' : ''}">${esc(okLabel)}</button>
       <button class="btn block" data-act="closeSheet">Cancel</button>
     </div>`);
 }
@@ -216,8 +216,9 @@ let draft = null;
 function render() {
   const gated = !!(window.MonySync && MonySync.needsSignIn());
   document.body.classList.toggle('gate', gated);
-  if (gated) { $('#view').innerHTML = viewGate(); return; }
+  if (gated) { document.body.dataset.view = 'gate'; $('#view').innerHTML = viewGate(); return; }
   const [name, arg] = (location.hash.slice(1) || 'home').split('/');
+  document.body.dataset.view = name in { home: 1, new: 1, pay: 1, savings: 1, waiting: 1, history: 1, splits: 1 } ? name : 'home';
   const views = { home: viewHome, new: viewNew, pay: viewPay, savings: viewSavings, waiting: viewWaiting, history: viewHistory, splits: viewSplits };
   const fn = views[name] || viewHome;
   if (name === 'new' && (!draft || draft.forArg !== (arg || ''))) draft = newDraft(arg);
@@ -244,10 +245,12 @@ function viewGate() {
   return `<section class="gate-wrap">
     <svg class="gate-mark" viewBox="0 0 200 200" aria-hidden="true"><g class="gate-spin">${slices}<g class="gate-cuts" stroke-width="${gap}">${cuts}</g></g></svg>
     <h1 class="gate-word">MONY</h1>
-    <p class="gate-tag">Pay yourself first.</p>
+    <p class="gate-tag">Pay yourself<br>first.</p>
     <p class="gate-sub">Split every payment. Tick off the transfers. Watch the jar fill.</p>
-    <button class="gbtn" data-act="syncConnect">${G_LOGO}<span>Sign in with Google</span></button>
-    <p class="gate-fine">Your money stays on this phone and in a sheet in your own Google Drive. MONY can only see the sheet it creates. <a href="privacy.html">Privacy</a></p>
+    <div class="gate-foot">
+      <button class="gbtn" data-act="syncConnect">${G_LOGO}<span>Sign in with Google</span></button>
+      <p class="gate-fine">Your money stays on this phone and in a sheet in your own Google Drive. MONY can only see the sheet it creates. <a href="privacy.html">Privacy</a></p>
+    </div>
   </section>`;
 }
 
@@ -282,7 +285,8 @@ function paidButton(inc, tgt) {
   return `<div class="paid">
     <button class="jar" data-act="newPay" aria-label="I got paid. ${esc(label)}">
       <svg viewBox="0 0 200 200" aria-hidden="true">
-        <defs><clipPath id="jarclip"><circle cx="100" cy="100" r="84"/></clipPath></defs>
+        <defs><clipPath id="jarclip"><circle cx="100" cy="100" r="84"/></clipPath>
+          <linearGradient id="liq" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F6FF9C"/><stop offset=".35" stop-color="#D4FF00"/></linearGradient></defs>
         <g class="ring"><g fill="none" stroke-width="7" stroke-linecap="round" transform="rotate(-90 100 100)">${ring}</g></g>
         <circle cx="100" cy="100" r="84" class="jar-bg"/>
         <g clip-path="url(#jarclip)">
@@ -315,14 +319,14 @@ function viewHome() {
     </a>`;
   }).join('')}
   ${paidButton(inc, tgt)}
-  <div class="card">
+  <div class="card lime">
     <div class="between"><span class="lbl2" style="margin:0">This month</span><span class="small muted">${monthLabel(mk)}</span></div>
     <div class="between" style="margin-top:6px"><span class="big-num">${money(inc)}</span><span class="muted">of ${money(tgt)}</span></div>
     <div class="bar"><i style="width:${pct}%"></i></div>
     <div class="small muted">${left > 0 ? `${money(left)} to go` : `Target hit${left < 0 ? ` · ${money(-left)} over` : ''}`}</div>
   </div>
   <div class="stats">
-    <a class="card stat" href="#savings"><div class="lbl">Savings</div><div class="mid-num">${money(savingsTotal())}</div></a>
+    <a class="card stat dark" href="#savings"><div class="lbl">Savings</div><div class="mid-num">${money(savingsTotal())}</div></a>
     <a class="card stat" href="#waiting"><div class="lbl">Owed to you</div><div class="mid-num">${money(owedTotal())}</div></a>
   </div>`;
 }
@@ -392,7 +396,7 @@ function updatePreview() {
   if (tot !== 100) { pv.innerHTML = '<div class="empty">Percentages must add up to 100%.</div>'; return; }
   pv.innerHTML = (take > 0 ? `<div class="kv"><span>Job costs, kept first</span><span>${money(take)}</span></div><div class="kv" style="margin-bottom:6px"><span>Split on</span><span>${money(amt - take)}</span></div>` : '')
     + txRows(computeShares(amt, take, d.pcts), false)
-    + `<div style="border-top:1px solid var(--line2);margin-top:6px;padding-top:8px">${appBlock(appTotals([{ shares: computeShares(amt, take, d.pcts), takeOff: take }]), false)}</div>`;
+    + `<div style="background:var(--white);border-radius:var(--r-sm);margin-top:10px;padding:8px 14px">${appBlock(appTotals([{ shares: computeShares(amt, take, d.pcts), takeOff: take }]), false)}</div>`;
 }
 function txRows(shares, interactive) {
   const stay = shares.filter(s => s.inbox && s.amount > 0);
@@ -515,7 +519,7 @@ function viewSavings() {
     <div class="big-num">${money(total)}</div>
     <div class="bar" style="margin-top:14px">
       <i class="floor" style="width:${at(Math.min(total, floor))}%"></i>
-      ${total > floor ? `<i style="left:${at(floor)}%;width:${at(total) - at(floor)}%;border-radius:0 6px 6px 0"></i>` : ''}
+      ${total > floor ? `<i style="left:${at(floor)}%;width:${at(total) - at(floor)}%;border-radius:0 999px 999px 0"></i>` : ''}
       ${marks.map(m => `<span class="mk" style="left:calc(${m.x}% - 1px)"></span>`).join('')}
     </div>
     <div class="marks">${marks.map((m, i) => `<span class="${i % 2 ? 'alt' : ''}" style="left:${Math.min(92, Math.max(6, m.x))}%">${esc(m.label)}</span>`).join('')}</div>
@@ -758,7 +762,7 @@ function payDetail(id) {
       ${p.takeOff ? `<div class="kv"><span>Take off first</span><span>${money(p.takeOff)}</span></div>` : ''}
       <div class="kv"><span>Split</span><span>${esc(p.splitName)} · ${esc(p.pctLabel || '')}</span></div>
       ${p.shares.filter(s => s.amount).map(s => `<div class="kv"><span>${esc(shareName(s))}</span><span>${money(s.amount)}${s.done ? '' : ' · not moved'}</span></div>`).join('')}
-      <div style="border-top:1px solid var(--line);margin-top:6px;padding-top:6px">${appBlock(t, false)}</div>
+      <div style="background:var(--white);border-radius:var(--r-sm);margin-top:10px;padding:8px 14px">${appBlock(t, false)}</div>
     </div>
     <div class="btns" style="margin-top:12px">
       <a class="btn primary block" href="#pay/${p.id}" style="text-align:center;text-decoration:none;line-height:22px">Open</a>

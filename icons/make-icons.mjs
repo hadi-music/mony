@@ -1,7 +1,7 @@
 // Draws the MONY mark (a donut split 40/10/15/35, savings slice in green) to PNG. Run: node icons/make-icons.mjs
 import { writeFileSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
-const BG = [22, 21, 19], PAPER = [241, 237, 228], GREEN = [92, 203, 138];
+const BG = [13, 13, 12], PAPER = [243, 243, 240], GREEN = [212, 255, 0]; // ink, paper, lime
 const SPLIT = [40, 10, 15, 35], COLORS = [PAPER, PAPER, PAPER, GREEN];
 const GAP = 0.024; // gap width as a share of icon size; constant width keeps each gap's edges parallel
 const R_OUT = 0.34, R_IN = 0.19;
