@@ -135,7 +135,7 @@
         if ('tag' in o) p.tag = tagOf(o.tag, p.tag);
       } else { // a row typed by hand
         const amount = num(o.amount); if (!(amount > 0)) continue;
-        const sp = def(), take = Math.max(0, num(o['take off first']) || 0);
+        const sp = def(), take = Math.max(0, num(o.prepaid ?? o['take off first']) || 0);
         p = { id: str(o.id) || uid(), created: Date.now(), date: normDate(o.date) || todayStr(), client: str(o.client),
           tag: tagOf(o.tag, S.tags[S.tags.length - 1] || ''), amount: r2(amount), takeOff: r2(take < amount ? take : 0),
           splitName: sp.name, pcts: { ...sp.pcts }, pctLabel: pctString(sp.pcts) };
@@ -161,7 +161,7 @@
     const home = (D.wallets.find(w => w.inbox) || {}).app || 'Whish';
     const apps = appKeys(appTotals(D.payments));
     const label = a => (a === home ? `Stays in ${a}` : `To ${a}`);
-    const payments = [['ID', 'Date', 'Client', 'Tag', 'Amount', 'Take off first', 'Split used', 'Percentages', ...D.wallets.map(w => w.name), ...apps.map(label), 'Transfer fees', 'Status', 'Data']];
+    const payments = [['ID', 'Date', 'Client', 'Tag', 'Amount', 'Prepaid', 'Split used', 'Percentages', ...D.wallets.map(w => w.name), ...apps.map(label), 'Transfer fees', 'Status', 'Data']];
     [...D.payments].sort((a, b) => (a.date + a.created).localeCompare(b.date + b.created)).forEach(p => {
       const by = {}; p.shares.forEach(s => { by[s.walletId] = r2((by[s.walletId] || 0) + s.amount); });
       const t = appTotals([p]);

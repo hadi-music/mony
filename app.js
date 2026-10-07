@@ -115,7 +115,7 @@ function savingsPending() {
   for (const p of S.payments) for (const s of p.shares) if (s.savings && !s.done) t += s.amount;
   return r2(t);
 }
-/* Money per app: Neo = transfers out, Whish (the inbox app) = what stays, incl. job costs. */
+/* Money per app: Neo = transfers out, Whish (the inbox app) = what stays. Prepaid isn't counted: it already left. */
 /* A transfer fee is either paid on top from the inbox ("Whish took $182") or taken out of
    what arrives ("Neo got $178"). Only on-top fees lower what stays in the inbox; inside fees
    lower the wallet shares in that app instead. */
@@ -149,7 +149,7 @@ function appTotals(ps) {
   for (const p of ps) {
     for (const s of p.shares) add(shareApp(s), s.amount);
     const inb = p.shares.find(s => s.inbox);
-    add(inb ? shareApp(inb) : (inboxWallet() || {}).app || 'Whish', r2((p.takeOff || 0) - feeTop(p)));
+    add(inb ? shareApp(inb) : (inboxWallet() || {}).app || 'Whish', -feeTop(p));
   }
   return t;
 }
@@ -407,12 +407,12 @@ function viewNew() {
         <div class="in"><input type="number" inputmode="decimal" data-pct="${w.id}" value="${+d.pcts[w.id] || 0}"></div></div>`).join('')}
         <div class="total" id="pctTotal"></div><div class="small muted">Only for this payment.</div></div>` : ''}
     </div>
-    <label class="fld"><span>Take off first <span style="font-weight:500">(job costs, optional)</span></span>
+    <label class="fld"><span>Prepaid <span style="font-weight:500">(already spent, optional)</span></span>
       <input id="f-take" inputmode="decimal" value="${esc(d.takeOff)}" placeholder="0"></label>
     <button type="button" class="toggle ${d.done ? 'on' : ''}" data-act="toggleDone" aria-pressed="${d.done}"><i></i><span><b>Transfers already done</b><small>For payments you already split before logging them here</small></span></button>
     <h2>Transfers</h2>
     <div class="card" id="preview"></div>
-    ${editing ? '<p class="small muted">Changing the amount, take-off or split recalculates its transfers and starts them over.</p>' : ''}
+    ${editing ? '<p class="small muted">Changing the amount, prepaid or split recalculates its transfers and starts them over.</p>' : ''}
     <p class="err" id="payErr"></p>
     <button type="button" class="btn primary block" data-act="savePay" style="min-height:54px;font-size:17px">${editing ? 'Save changes' : d.done ? 'Save payment' : 'Split it'}</button>
     ${editing ? `<button type="button" class="btn danger block" data-act="delPay" data-id="${d.editId}" style="margin-top:10px">Delete payment</button>` : ''}
@@ -437,9 +437,9 @@ function updatePreview() {
   $$('[data-act=pickWaiting]').forEach(b => b.classList.toggle('on', b.dataset.id === d.waitingId));
   const pv = $('#preview');
   if (!(amt > 0)) { pv.innerHTML = '<div class="empty">Enter the amount to see your transfers.</div>'; return; }
-  if (!(take >= 0) || take >= amt) { pv.innerHTML = '<div class="empty">Take-off has to be less than the amount.</div>'; return; }
+  if (!(take >= 0) || take >= amt) { pv.innerHTML = '<div class="empty">Prepaid has to be less than the amount.</div>'; return; }
   if (tot !== 100) { pv.innerHTML = '<div class="empty">Percentages must add up to 100%.</div>'; return; }
-  pv.innerHTML = (take > 0 ? `<div class="kv"><span>Job costs, kept first</span><span>${money(take)}</span></div><div class="kv" style="margin-bottom:6px"><span>Split on</span><span>${money(amt - take)}</span></div>` : '')
+  pv.innerHTML = (take > 0 ? `<div class="kv"><span>Prepaid, already out of Whish</span><span>−${money(take)}</span></div><div class="kv" style="margin-bottom:6px"><span>Split on</span><span>${money(amt - take)}</span></div>` : '')
     + txRows(computeShares(amt, take, d.pcts), false)
     + `<div style="background:var(--white);border-radius:var(--r-sm);margin-top:10px;padding:8px 14px">${appBlock(appTotals([{ shares: computeShares(amt, take, d.pcts), takeOff: take }]), false)}</div>`;
 }
@@ -464,7 +464,7 @@ function savePayment() {
   const d = draft, err = $('#payErr');
   const amt = num(d.amount), take = d.takeOff === '' ? 0 : num(d.takeOff);
   if (!(amt > 0)) return (err.textContent = 'Enter the amount you received.');
-  if (!(take >= 0) || take >= amt) return (err.textContent = 'Take-off has to be less than the amount.');
+  if (!(take >= 0) || take >= amt) return (err.textContent = 'Prepaid has to be less than the amount.');
   if (pctTotal(d.pcts) !== 100) return (err.textContent = 'Percentages must add up to exactly 100%.');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d.date)) return (err.textContent = 'Pick a date.');
   const sp = S.splits.find(s => s.id === d.splitId);
@@ -523,7 +523,7 @@ function viewPay(id) {
   const n = st.indexOf(cur) + 1, doneN = st.filter(s => s.done).length;
   const inbox = p.shares.find(s => s.inbox);
   const fee = feeTop(p);
-  const stay = r2((inbox ? inbox.amount : 0) + (p.takeOff || 0) - fee), home = inbox ? shareApp(inbox) : stayApp();
+  const stay = r2((inbox ? inbox.amount : 0) - fee), home = inbox ? shareApp(inbox) : stayApp();
   const feeNote = fee ? ` after ${money(fee)} fee` : '';
   const finished = S.payments.filter(x => !isPending(x)).sort((a, b) => a.created - b.created);
   const payday = finished.indexOf(p) + 1;
@@ -571,14 +571,14 @@ function viewPay(id) {
 
   return `<div class="top"><a href="#home">← Home</a><span class="small muted">${dateLabel(p.date)}</span></div>
   <div class="between" style="margin:8px 0 2px"><h1 style="margin:0">${esc(p.client || 'Payment')}</h1><span class="mid-num">${money(p.amount)}</span></div>
-  <p class="small muted">${esc(p.tag)} · ${esc(p.splitName)}${p.takeOff ? ` · ${money(p.takeOff)} job costs kept first` : ''}</p>
+  <p class="small muted">${esc(p.tag)} · ${esc(p.splitName)}${p.takeOff ? ` · ${money(p.takeOff)} prepaid · already left ${esc(home)}` : ''}</p>
   <div class="seg">${st.map(s => `<i class="${s.done ? 'on' : ''} ${s === cur ? 'cur' : ''}"></i>`).join('')}</div>
   <div class="small muted" style="margin-bottom:12px">${all ? 'All moved' : `${doneN} of ${st.length} done`}</div>
   ${all ? `<div class="done-block ${fin ? 'celebrate' : ''}">
       <div class="burst">${Array.from({ length: 12 }, (_, i) => `<i style="--a:${i * 30}deg"></i>`).join('')}<div class="ok-ic">${CHECK}</div></div>
       <p class="muted" style="margin:0">Paid yourself first${payday ? ` · payday #${payday}` : ''}</p>
       <div class="big-num">${money(stay)}</div>
-      <p class="muted">stays in ${esc(home)}${p.takeOff ? ' (essentials + job costs)' : ' for essentials'}${feeNote}</p>
+      <p class="muted">stays in ${esc(home)} for essentials${feeNote}</p>
     </div>` : ''}
   <div class="steps">${st.map(row).join('')}</div>
   ${stay ? `<div class="step stay"><span class="dot ok">${CHECK}</span>
@@ -851,7 +851,7 @@ function payDetail(id) {
   openSheet(`<div class="between"><h3 style="margin:0">${esc(p.client || 'Payment')}</h3><span class="mid-num">${money(p.amount)}</span></div>
     <p class="small muted" style="margin:4px 0 14px">${dateLabel(p.date)} · ${esc(p.tag)} · ${isPending(p) ? 'to split' : 'all moved'}</p>
     <div class="card">
-      ${p.takeOff ? `<div class="kv"><span>Take off first</span><span>${money(p.takeOff)}</span></div>` : ''}
+      ${p.takeOff ? `<div class="kv"><span>Prepaid · left ${esc((p.shares.find(s => s.inbox) ? shareApp(p.shares.find(s => s.inbox)) : stayApp()))}</span><span>−${money(p.takeOff)}</span></div>` : ''}
       <div class="kv"><span>Split</span><span>${esc(p.splitName)} · ${esc(p.pctLabel || '')}</span></div>
       ${p.shares.filter(s => s.amount).map(s => `<div class="kv"><span>${esc(shareName(s))}</span><span>${money(s.amount)}${s.done ? '' : ' · not moved'}</span></div>`).join('')}
       <div style="background:var(--white);border-radius:var(--r-sm);margin-top:10px;padding:8px 14px">${appBlock(t, false)}</div>
@@ -871,7 +871,7 @@ function exportRows() {
   S.payments.forEach(p => p.shares.forEach(s => { if (!label[s.walletId]) { cols.push(s.walletId); label[s.walletId] = s.name; } }));
   const expApps = appKeys(appTotals(S.payments));
   const rows = [['Payments'],
-    ['Date', 'Client', 'Tag', 'Amount', 'Take off first', 'Split amount', 'Split used', 'Percentages', ...cols.map(c => label[c]), ...expApps.map(appLabel), 'Transfer fees', 'Status']];
+    ['Date', 'Client', 'Tag', 'Amount', 'Prepaid', 'Split amount', 'Split used', 'Percentages', ...cols.map(c => label[c]), ...expApps.map(appLabel), 'Transfer fees', 'Status']];
   [...S.payments].sort((a, b) => (a.date + a.created).localeCompare(b.date + b.created)).forEach(p => {
     const by = {}; p.shares.forEach(s => { by[s.walletId] = r2((by[s.walletId] || 0) + s.amount); });
     rows.push([p.date, p.client, p.tag, p.amount, p.takeOff || 0, r2(p.amount - (p.takeOff || 0)), p.splitName, p.pctLabel || '',
