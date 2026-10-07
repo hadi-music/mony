@@ -1,0 +1,8 @@
+[build]
+  publish = "."
+
+# Always revalidate the shell so phones see new versions right away.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
