@@ -67,6 +67,7 @@ function load() {
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(S)); memoryOnly = false; }
   catch (e) { memoryOnly = true; toast('Couldn’t save — storage is blocked'); }
+  if (window.MonySync) MonySync.changed();
 }
 let S = load();
 try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
@@ -222,6 +223,7 @@ function render() {
   $$('.tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === tab));
   if (name === 'new') updatePreview();
   if (name !== 'new') draft = null;
+  if (window.MonySync) MonySync.paint();
 }
 window.addEventListener('hashchange', () => { closeSheet(); render(); window.scrollTo(0, 0); });
 
@@ -833,9 +835,12 @@ function viewSplits() {
   <h2>This month</h2>
   <div class="card"><label class="fld" style="margin:0"><span>Monthly income target</span><input inputmode="decimal" data-set="target" value="${S.target}"></label></div>
 
+  <h2 id="sync">Google Sheets</h2>
+  <div class="card" id="syncCard"></div>
+
   <h2 id="data">Data</h2>
   <div class="card">
-    <p class="small muted">${S.lastBackup ? `Last backup ${new Date(S.lastBackup).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : 'Never backed up'}. Everything lives only on this phone.</p>
+    <p class="small muted">${S.lastBackup ? `Last backup ${new Date(S.lastBackup).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : 'Never backed up'}. The backup file is yours to keep anywhere.</p>
     <div class="btns"><button class="btn sm" data-act="backup">Back up (JSON)</button><button class="btn sm" data-act="restore">Restore</button></div>
   </div>`;
 }

@@ -263,3 +263,13 @@ details.month[open] summary .month-name::after{transform:rotate(45deg);vertical-
 .memory{font-size:13px;color:var(--accent);font-weight:600;margin-top:3px}
 .memory b{font-weight:800}
 @media (prefers-reduced-motion:reduce){.wave.w3{animation:none}}
+
+/* sync pill */
+.appbar{display:flex;align-items:center;justify-content:space-between}
+.sync-pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line2);background:transparent;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer}
+.sync-pill[hidden]{display:none}
+.sync-pill i{width:7px;height:7px;border-radius:50%;background:var(--accent)}
+.sync-pill.busy i{background:var(--muted);animation:blink 1s ease-in-out infinite}
+.sync-pill.warn{color:var(--warn);border-color:var(--warn)} .sync-pill.warn i{background:var(--warn)}
+.sync-pill.bad{color:var(--danger);border-color:var(--danger)} .sync-pill.bad i{background:var(--danger)}
+@keyframes blink{50%{opacity:.25}}

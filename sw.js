@@ -1,6 +1,6 @@
 // Bump VERSION on every deploy so phones pick up the new files.
-const VERSION = 'mony-v7';
-const ASSETS = ['./', './index.html', './styles.css', './app.js', './manifest.webmanifest',
+const VERSION = 'mony-v8';
+const ASSETS = ['./', './index.html', './styles.css', './app.js', './sync.js', './config.js', './privacy.html', './manifest.webmanifest',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {

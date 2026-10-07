@@ -17,7 +17,7 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<header class="appbar"><span class="wordmark">MONY</span></header>
+<header class="appbar"><span class="wordmark">MONY</span><button id="syncPill" class="sync-pill" data-act="syncTap" hidden></button></header>
 <main id="view" class="view" aria-live="polite"></main>
 <nav class="tabs" aria-label="Sections">
   <a href="#home" data-tab="home">Home</a>
@@ -32,6 +32,8 @@
 </div>
 <div id="toast" class="toast" role="status"></div>
 <input type="file" id="restoreFile" accept="application/json,.json" hidden>
+<script src="config.js"></script>
+<script src="sync.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
