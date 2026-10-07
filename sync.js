@@ -114,7 +114,7 @@
     waiting: w => ({ id: w.id, client: str(w.client), amount: r2(w.amount), expected: w.expected || '', note: str(w.note), added: w.added || (w.created ? tsDate(w.created) : '') }),
     withdrawals: w => ({ id: w.id, date: w.date, amount: r2(w.amount), kind: w.kind || '', reason: str(w.reason) }),
   };
-  const settingsOf = s => ({ wallets: s.wallets, splits: s.splits, defaultSplit: s.defaultSplit, floor: s.floor, startSavings: s.startSavings || 0, goals: s.goals, tags: s.tags, target: s.target });
+  const settingsOf = s => ({ wallets: s.wallets, splits: s.splits, defaultSplit: s.defaultSplit, floor: s.floor, startSavings: s.startSavings || 0, startSet: !!s.startSet, goals: s.goals, tags: s.tags, target: s.target });
   // a tag typed in the sheet: reuse an existing tag if it matches, else keep what was typed
   const tagOf = (v, fallback) => { const t = str(v); if (!t) return fallback; return S.tags.find(x => x.toLowerCase() === t.toLowerCase()) || t; };
   function hash(o) { // cyrb53
@@ -161,12 +161,12 @@
     const home = (D.wallets.find(w => w.inbox) || {}).app || 'Whish';
     const apps = appKeys(appTotals(D.payments));
     const label = a => (a === home ? `Stays in ${a}` : `To ${a}`);
-    const payments = [['ID', 'Date', 'Client', 'Tag', 'Amount', 'Take off first', 'Split used', 'Percentages', ...D.wallets.map(w => w.name), ...apps.map(label), 'Status', 'Data']];
+    const payments = [['ID', 'Date', 'Client', 'Tag', 'Amount', 'Take off first', 'Split used', 'Percentages', ...D.wallets.map(w => w.name), ...apps.map(label), 'Transfer fees', 'Status', 'Data']];
     [...D.payments].sort((a, b) => (a.date + a.created).localeCompare(b.date + b.created)).forEach(p => {
       const by = {}; p.shares.forEach(s => { by[s.walletId] = r2((by[s.walletId] || 0) + s.amount); });
       const t = appTotals([p]);
       payments.push([p.id, p.date, p.client, p.tag, p.amount, p.takeOff || 0, p.splitName, p.pctLabel || '',
-        ...D.wallets.map(w => by[w.id] || 0), ...apps.map(a => t[a] || 0), isPending(p) ? 'to split' : 'done', JSON.stringify(p)]);
+        ...D.wallets.map(w => by[w.id] || 0), ...apps.map(a => t[a] || 0), feeTotal(p), isPending(p) ? 'to split' : 'done', JSON.stringify(p)]);
     });
     const waiting = [['ID', 'Client', 'Amount', 'Expected', 'Note', 'Added']]
       .concat(D.waiting.map(w => { const c = canon.waiting(w); return [c.id, c.client, c.amount, c.expected, c.note, c.added]; }));

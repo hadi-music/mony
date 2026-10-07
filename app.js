@@ -39,6 +39,7 @@ function defaults() {
     defaultSplit: 's_norm',
     floor: 2500,
     startSavings: 0,
+    startSet: false,
     goals: [],
     tags: [...DEFAULT_TAGS],
     target: 1700,
@@ -55,6 +56,7 @@ function migrate(d) {
   for (const k of Object.keys(base)) if (d[k] === undefined) d[k] = base[k];
   for (const k of ['wallets', 'splits', 'payments', 'withdrawals', 'waiting', 'goals', 'tags']) if (!Array.isArray(d[k])) d[k] = base[k];
   if (!d.tags.length) d.tags = [...DEFAULT_TAGS];
+  if (typeof d.startSet !== 'boolean') d.startSet = (+d.startSavings || 0) > 0;
   if (!d.wallets.length) d.wallets = base.wallets;
   if (!d.splits.length) d.splits = base.splits;
   if (!d.splits.some(s => s.id === d.defaultSplit)) d.defaultSplit = d.splits[0].id;
@@ -114,13 +116,19 @@ function savingsPending() {
   return r2(t);
 }
 /* Money per app: Neo = transfers out, Whish (the inbox app) = what stays, incl. job costs. */
+const feeTotal = p => r2(Object.values(p.fees || {}).reduce((a, v) => a + (+v || 0), 0));
+function lastFee(app) {
+  const ps = [...S.payments].sort((a, b) => b.created - a.created);
+  for (const p of ps) if (p.fees && +p.fees[app] > 0) return +p.fees[app];
+  return 0;
+}
 function appTotals(ps) {
   const t = {};
   const add = (a, v) => { if (v) t[a] = r2((t[a] || 0) + v); };
   for (const p of ps) {
     for (const s of p.shares) add(shareApp(s), s.amount);
     const inb = p.shares.find(s => s.inbox);
-    add(inb ? shareApp(inb) : (inboxWallet() || {}).app || 'Whish', p.takeOff || 0);
+    add(inb ? shareApp(inb) : (inboxWallet() || {}).app || 'Whish', r2((p.takeOff || 0) - feeTotal(p)));
   }
   return t;
 }
@@ -312,6 +320,7 @@ function viewHome() {
   const pct = tgt ? Math.min(100, inc / tgt * 100) : 0;
   const left = r2(tgt - inc);
   return `${backupBanner()}
+  ${!S.startSet ? '<div class="banner"><span>Already have savings? Add them first.</span><a class="btn sm" href="#savings" style="text-decoration:none">Add</a></div>' : ''}
   ${memoryOnly ? '<div class="banner"><span>Storage is blocked — nothing will be kept.</span></div>' : ''}
   ${pend.slice(0, 1).map(p => {
     const st = steps(p), done = st.filter(s => s.done).length;
@@ -454,13 +463,16 @@ function viewPay(id) {
   const lastDone = [...st].reverse().find(s => s.done);
   const n = st.indexOf(cur) + 1, doneN = st.filter(s => s.done).length;
   const inbox = p.shares.find(s => s.inbox);
-  const stay = r2((inbox ? inbox.amount : 0) + (p.takeOff || 0)), home = inbox ? shareApp(inbox) : stayApp();
+  const fee = feeTotal(p);
+  const stay = r2((inbox ? inbox.amount : 0) + (p.takeOff || 0) - fee), home = inbox ? shareApp(inbox) : stayApp();
+  const feeNote = fee ? ` after ${money(fee)} fee` : '';
   const finished = S.payments.filter(x => !isPending(x)).sort((a, b) => a.created - b.created);
   const payday = finished.indexOf(p) + 1;
   const pop = justUnlocked, fin = justFinished; justUnlocked = null; justFinished = false;
 
   const row = s => {
-    const label = s.type === 'hop' ? `${esc(home)} → ${esc(s.app)}` : `${esc(shareName(s.s))} <span class="muted">· ${esc(s.app)}</span>`;
+    const hopFee = s.type === 'hop' && p.fees ? +p.fees[s.app] || 0 : 0;
+    const label = s.type === 'hop' ? `${esc(home)} → ${esc(s.app)}${hopFee ? ` · ${money(hopFee)} fee` : ''}` : `${esc(shareName(s.s))} <span class="muted">· ${esc(s.app)}</span>`;
     if (s.done) return `<div class="step done">
         <span class="dot ok">${CHECK}</span>
         <div class="step-main"><div class="step-amt">${money(s.amount)}</div><div class="step-to">${label}</div></div>
@@ -476,6 +488,15 @@ function viewPay(id) {
         <div class="btns" style="margin-top:14px">
           <button class="btn sm" data-act="copy" data-v="${s.amount}">Copy amount</button>
         </div>
+        ${s.type === 'hop' ? (() => {
+          const saved = p.fees && p.fees[s.app] != null ? p.fees[s.app] : '', last = lastFee(s.app);
+          return `<div class="fee">
+            <label for="hopFee">Transfer fee</label>
+            <div class="fee-in"><b>$</b><input id="hopFee" inputmode="decimal" placeholder="0" value="${saved === 0 ? '' : esc(saved)}" autocomplete="off"></div>
+            ${last && saved === '' ? `<button type="button" class="chip" data-act="feeLast" data-v="${last}">Last time ${money(last)}</button>` : ''}
+          </div>
+          <p class="fee-hint">In dollars. Paid from what stays in ${esc(home)}. Leave it empty if it’s free.</p>`;
+        })() : ''}
         <button class="btn primary block moved" data-act="step" data-key="${s.key}">${CHECK}<span>Moved it</span></button>
       </div>`;
     }
@@ -492,11 +513,11 @@ function viewPay(id) {
       <div class="burst">${Array.from({ length: 12 }, (_, i) => `<i style="--a:${i * 30}deg"></i>`).join('')}<div class="ok-ic">${CHECK}</div></div>
       <p class="muted" style="margin:0">Paid yourself first${payday ? ` · payday #${payday}` : ''}</p>
       <div class="big-num">${money(stay)}</div>
-      <p class="muted">stays in ${esc(home)}${p.takeOff ? ' (essentials + job costs)' : ' for essentials'}</p>
+      <p class="muted">stays in ${esc(home)}${p.takeOff ? ' (essentials + job costs)' : ' for essentials'}${feeNote}</p>
     </div>` : ''}
   <div class="steps">${st.map(row).join('')}</div>
   ${stay ? `<div class="step stay"><span class="dot ok">${CHECK}</span>
-    <div class="step-main"><div class="step-amt">${money(stay)}</div><div class="step-to">stays in ${esc(home)} · nothing to do</div></div></div>` : ''}
+    <div class="step-main"><div class="step-amt">${money(stay)}</div><div class="step-to">stays in ${esc(home)}${feeNote} · nothing to do</div></div></div>` : ''}
   ${all ? '<a class="btn primary block" href="#home" style="text-align:center;text-decoration:none;line-height:22px;margin-top:16px">Done</a>' : '<p class="small muted" style="margin-top:12px">Each move unlocks the next. This stays on Home until the last one.</p>'}
   <button class="btn danger block" data-act="delPay" data-id="${p.id}" style="margin-top:18px">Delete payment</button>`;
 }
@@ -518,8 +539,17 @@ function viewSavings() {
   }).join('');
   const wds = [...S.withdrawals].sort((a, b) => (b.date + b.created).localeCompare(a.date + a.created));
   return `<h1>Savings</h1>
+  ${!S.startSet ? `<div class="card lime start-card">
+    <div class="lbl2" style="margin:0 0 6px">Starting point</div>
+    <p class="start-q">How much is in your savings account right now?</p>
+    <p class="small muted" style="margin:0 0 14px">You didn’t start from zero. Add what you already have and BROKE counts from the real number.</p>
+    <div class="fee-in light"><b>$</b><input id="startAmt" inputmode="decimal" placeholder="0"></div>
+    <p class="err" id="startErr"></p>
+    <div class="btns" style="margin-top:12px"><button class="btn primary" data-act="startSave">Add it</button><button class="btn ghost" data-act="startZero">Starting from zero</button></div>
+  </div>` : ''}
   <div class="card">
     <div class="big-num">${money(total)}</div>
+    ${S.startSet ? `<button class="start-line" data-act="startEdit">${+S.startSavings ? `Includes ${money(S.startSavings)} you had before BROKE` : 'Started from zero'} · <u>Edit</u></button>` : ''}
     <div class="bar" style="margin-top:14px">
       <i class="floor" style="width:${at(Math.min(total, floor))}%"></i>
       ${total > floor ? `<i style="left:${at(floor)}%;width:${at(total) - at(floor)}%;border-radius:0 999px 999px 0"></i>` : ''}
@@ -780,11 +810,11 @@ function exportRows() {
   S.payments.forEach(p => p.shares.forEach(s => { if (!label[s.walletId]) { cols.push(s.walletId); label[s.walletId] = s.name; } }));
   const expApps = appKeys(appTotals(S.payments));
   const rows = [['Payments'],
-    ['Date', 'Client', 'Tag', 'Amount', 'Take off first', 'Split amount', 'Split used', 'Percentages', ...cols.map(c => label[c]), ...expApps.map(appLabel), 'Status']];
+    ['Date', 'Client', 'Tag', 'Amount', 'Take off first', 'Split amount', 'Split used', 'Percentages', ...cols.map(c => label[c]), ...expApps.map(appLabel), 'Transfer fees', 'Status']];
   [...S.payments].sort((a, b) => (a.date + a.created).localeCompare(b.date + b.created)).forEach(p => {
     const by = {}; p.shares.forEach(s => { by[s.walletId] = r2((by[s.walletId] || 0) + s.amount); });
     rows.push([p.date, p.client, p.tag, p.amount, p.takeOff || 0, r2(p.amount - (p.takeOff || 0)), p.splitName, p.pctLabel || '',
-      ...cols.map(c => by[c] ?? 0), ...expApps.map(a => appTotals([p])[a] || 0), isPending(p) ? 'to split' : 'done']);
+      ...cols.map(c => by[c] ?? 0), ...expApps.map(a => appTotals([p])[a] || 0), feeTotal(p), isPending(p) ? 'to split' : 'done']);
   });
   rows.push([], ['Savings withdrawals'], ['Date', 'Amount', 'Kind', 'Reason']);
   [...S.withdrawals].sort((a, b) => a.date.localeCompare(b.date)).forEach(w => rows.push([w.date, w.amount, w.kind || '', w.reason || '']));
@@ -939,6 +969,12 @@ const ACT = {
     const cur = st.find(s => !s.done), last = [...st].reverse().find(s => s.done);
     const set = (s, v) => { if (s.type === 'hop') p.hops[s.app] = v; else p.shares[s.i].done = v; };
     if (cur && cur.key === k) {
+      if (cur.type === 'hop') {
+        const raw = ($('#hopFee') || {}).value || '', fee = raw.trim() === '' ? 0 : num(raw);
+        if (!(fee >= 0)) return toast('Enter the fee as a number, or leave it empty');
+        if (fee >= cur.amount) return toast('That fee is bigger than the transfer');
+        p.fees = p.fees || {}; p.fees[cur.app] = r2(fee);
+      }
       set(cur, true);
       const next = st[st.indexOf(cur) + 1];
       justUnlocked = next ? next.key : null; justFinished = !next;
@@ -950,6 +986,20 @@ const ACT = {
     save(); render();
     const target = justFinished ? null : $('.step.current');
     if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' }); else $('#view').scrollTo({ top: 0, behavior: 'smooth' });
+  },
+  feeLast(el) { const i = $('#hopFee'); if (i) { i.value = el.dataset.v; el.remove(); } },
+  startSave() {
+    const v = num(($('#startAmt') || {}).value), err = $('#startErr');
+    if (!(v >= 0)) { if (err) err.textContent = 'Enter the amount, or tap “Starting from zero”.'; return; }
+    S.startSavings = r2(v); S.startSet = true; save(); closeSheet(); render(); toast(v ? `Added ${money(v)} to savings` : 'Starting from zero');
+  },
+  startZero() { S.startSavings = 0; S.startSet = true; save(); render(); toast('Starting from zero'); },
+  startEdit() {
+    openSheet(`<h3>Money you had before BROKE</h3>
+      <p class="muted">What was in your savings account when you started using BROKE. Everything you move in later is counted on top.</p>
+      <div class="fee-in light" style="margin:14px 0 6px"><b>$</b><input id="startAmt" inputmode="decimal" value="${S.startSavings || ''}" placeholder="0"></div>
+      <p class="err" id="startErr"></p>
+      <div class="btns"><button class="btn primary block" data-act="startSave">Save</button><button class="btn block" data-act="closeSheet">Cancel</button></div>`);
   },
   async copy(el) { (await copyText(el.dataset.v)) ? toast(`Copied ${el.dataset.v}`) : toast('Couldn’t copy'); },
   delPay(el) {
@@ -1053,7 +1103,7 @@ document.addEventListener('change', e => {
   if (t.dataset.set) {
     const v = num(t.value);
     if (!(v >= 0)) { t.value = S[t.dataset.set]; toast('Enter a number'); return; }
-    S[t.dataset.set] = r2(v); save(); toast('Saved'); return;
+    S[t.dataset.set] = r2(v); if (t.dataset.set === 'startSavings') S.startSet = true; save(); toast('Saved'); return;
   }
   if (t.dataset.tagi != null) {
     const i = +t.dataset.tagi, old = S.tags[i], v = t.value.trim();

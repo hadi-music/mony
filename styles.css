@@ -350,3 +350,20 @@ body[data-view=home] .jar-txt small{font-size:clamp(11px,4cqh,13px)}
 }
 .tag-row{grid-template-columns:1fr auto auto}
 .tag-row .small{white-space:nowrap}
+
+/* transfer fee (on the dark "send to Neo" card) */
+.fee{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px}
+.fee label{font-size:14px;color:#9C9C95;flex-basis:100%}
+.fee-in{display:flex;align-items:baseline;gap:4px;background:#2C2C29;border-radius:var(--r-sm);padding:6px 16px;flex:1;min-width:140px}
+.fee-in b{font-size:24px;font-weight:400;color:#9C9C95}
+.fee-in input,.fee-in input:focus{background:transparent;outline:none;color:var(--white);font-size:30px;font-weight:500;letter-spacing:-.04em;padding:0;min-height:48px;border-radius:0}
+.fee .chip{background:#33332F;color:var(--white)}
+.fee-hint{font-size:13px;color:#9C9C95;margin:8px 0 0}
+.fee-in.light{background:var(--white)}
+.fee-in.light b{color:var(--muted)}
+.fee-in.light input,.fee-in.light input:focus{color:var(--ink)}
+
+/* starting balance */
+.start-q{font-size:26px;font-weight:500;letter-spacing:-.03em;line-height:1.05;margin:0 0 8px}
+.start-line{display:block;border:none;background:none;padding:0;margin:8px 0 0;font:inherit;font-size:14px;color:var(--muted);cursor:pointer;text-align:left}
+.start-line u{color:var(--ink);text-decoration-thickness:1.5px}
