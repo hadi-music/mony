@@ -1054,5 +1054,15 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#sheet
 /* ---------- boot ---------- */
 render();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+    .then(reg => { reg.update().catch(() => {}); }).catch(() => {}));
+  // When a new version takes over, reload once so it shows now, unless you're mid-entry.
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloading) return;
+    const busy = location.hash.startsWith('#new') || !$('#sheetWrap').hidden;
+    if (busy) { toast('Update ready — it loads next time'); return; }
+    reloading = true; location.reload();
+  });
 }
