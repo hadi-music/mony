@@ -17,9 +17,9 @@
   color-scheme:light;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html{background:var(--bg)}
+html{background:var(--bg);height:100%;overflow:hidden;overscroll-behavior:none}
 html,body{margin:0;color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.4;font-weight:400;-webkit-font-smoothing:antialiased}
-body{background:transparent;min-height:100vh;padding-bottom:calc(104px + env(safe-area-inset-bottom))}
+body{background:transparent;height:100vh;height:100dvh;overflow:hidden;overscroll-behavior:none;display:flex;flex-direction:column}
 body::before{content:"";position:fixed;inset:0;z-index:-1;background:var(--bg);pointer-events:none}
 body[data-view=home]::before,body[data-view=gate]::before{background:linear-gradient(180deg,var(--bg) 0%,var(--bg) 48%,#FBFDD8 62%,#F9FF7E 78%,var(--lime) 100%)}
 button,input,select{font:inherit;color:inherit}
@@ -27,11 +27,11 @@ button,input,select{font:inherit;color:inherit}
 a{color:inherit}
 
 /* chrome */
-.appbar{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;background:var(--bg);padding:calc(12px + env(safe-area-inset-top)) 20px 10px;max-width:520px;margin:0 auto}
+.appbar{flex:none;width:100%;position:relative;z-index:5;display:flex;align-items:center;justify-content:space-between;background:var(--bg);padding:calc(12px + env(safe-area-inset-top)) 20px 10px;max-width:520px;margin:0 auto}
 body[data-view=home] .appbar{background:transparent}
 .wordmark{font-weight:700;font-size:20px;letter-spacing:-.04em}
-.view{max-width:520px;margin:0 auto;padding:6px 16px 24px}
-.tabs{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom));z-index:6;display:flex;gap:2px;width:min(calc(100% - 24px),496px);background:var(--char);border-radius:999px;padding:6px}
+.view{flex:1;min-height:0;width:100%;max-width:520px;margin:0 auto;padding:6px 16px 24px;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain}
+.tabs{flex:none;position:relative;z-index:6;display:flex;gap:2px;width:min(calc(100% - 24px),496px);margin:6px auto calc(10px + env(safe-area-inset-bottom));background:var(--char);border-radius:999px;padding:6px}
 .tabs a{flex:1;text-align:center;padding:13px 2px;font-size:13px;font-weight:500;color:#9C9C95;text-decoration:none;border-radius:999px;letter-spacing:-.01em;white-space:nowrap}
 .tabs a.on{background:var(--white);color:var(--ink)}
 
@@ -303,8 +303,8 @@ details.month[open] summary .month-name::after{transform:rotate(45deg);vertical-
 
 /* sign-in gate */
 body[data-view=gate] .appbar,body[data-view=gate] .tabs{display:none}
-body[data-view=gate]{padding-bottom:0}
-.gate-wrap{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;padding:calc(28px + env(safe-area-inset-top)) 12px calc(28px + env(safe-area-inset-bottom))}
+body[data-view=gate] .view{padding:0 16px;max-width:520px}
+.gate-wrap{min-height:100%;display:flex;flex-direction:column;padding:calc(28px + env(safe-area-inset-top)) 12px calc(28px + env(safe-area-inset-bottom))}
 .gate-mark{width:64px;height:64px}
 .gate-mark .rest{fill:var(--ink)}
 .gate-mark .sav{fill:var(--ink);opacity:.35}
@@ -327,10 +327,7 @@ body[data-view=gate]{padding-bottom:0}
 }
 
 /* home: one screen, no scroll, toolbar always there */
-html:has(body[data-view=home]){overflow:hidden;overscroll-behavior:none}
-body[data-view=home]{height:100vh;height:100dvh;overflow:hidden;overscroll-behavior:none;padding-bottom:0;display:flex;flex-direction:column}
-body[data-view=home] .appbar{flex:none;width:100%}
-body[data-view=home] .view{flex:1;min-height:0;width:100%;display:flex;flex-direction:column;padding-bottom:calc(92px + env(safe-area-inset-bottom))}
+body[data-view=home] .view{overflow:hidden;display:flex;flex-direction:column;padding-bottom:4px}
 body[data-view=home] .view>*{flex:none}
 body[data-view=home] .paid{flex:1 1 auto;min-height:120px;margin:4px 0 14px;container-type:size;align-items:center}
 body[data-view=home] .jar{width:min(76vw,290px,36dvh);width:min(76vw,290px,100cqh)}
