@@ -325,3 +325,41 @@ body[data-view=gate]{padding-bottom:0}
 @media (prefers-reduced-motion:reduce){
   .ring,.wave,.bub,.wave.w3,.gate-mark path,.gate-spin,.step.current.pop,.celebrate .ok-ic,.celebrate .burst i,.sheet{animation:none}
 }
+
+/* home: one screen, no scroll; toolbar on a swipe */
+html:has(body[data-view=home]){overflow:hidden;overscroll-behavior:none}
+body[data-view=home]{height:100vh;height:100dvh;overflow:hidden;overscroll-behavior:none;padding-bottom:0;display:flex;flex-direction:column}
+body[data-view=home] .appbar{flex:none;width:100%}
+body[data-view=home] .view{flex:1;min-height:0;width:100%;display:flex;flex-direction:column;padding-bottom:calc(30px + env(safe-area-inset-bottom))}
+body[data-view=home] .view>*{flex:none}
+body[data-view=home] .paid{flex:1 1 auto;min-height:120px;margin:4px 0 14px;container-type:size;align-items:center}
+body[data-view=home] .jar{width:min(84vw,330px,42dvh);width:min(84vw,330px,100cqh)}
+body[data-view=home] .card{margin-bottom:8px}
+body[data-view=home] .stats .card{margin:0}
+body[data-view=home] .stat{min-height:108px}
+.more-pend{display:block;text-align:center;font-size:14px;font-weight:500;color:var(--muted);text-decoration:none;margin:-2px 0 6px}
+
+body[data-view=home] .tabs{transform:translate(-50%,calc(100% + 48px));transition:transform .38s cubic-bezier(.2,1,.3,1)}
+body[data-view=home].navup .tabs{transform:translate(-50%,0)}
+.navblur{display:none}
+body[data-view=home] .navblur{display:block;position:fixed;left:0;right:0;bottom:0;height:52vh;z-index:5;opacity:0;pointer-events:none;transition:opacity .3s ease;
+  -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);background:rgba(243,243,240,.18);
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 38%);mask-image:linear-gradient(to bottom,transparent 0,#000 38%)}
+body[data-view=home].navup .navblur{opacity:1;pointer-events:auto}
+.grab{display:none}
+body[data-view=home] .grab{display:block;position:fixed;left:50%;bottom:calc(4px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:6;width:90px;height:26px;border:none;background:transparent;padding:0;cursor:pointer;transition:opacity .2s}
+body[data-view=home] .grab::after{content:"";position:absolute;left:50%;top:50%;width:46px;height:5px;margin:-2.5px 0 0 -23px;border-radius:999px;background:var(--ink)}
+body[data-view=home].navup .grab{opacity:0;pointer-events:none}
+@media (prefers-reduced-motion:reduce){body[data-view=home] .tabs,.navblur{transition:none}}
+body[data-view=home] .pending{padding:14px 18px 16px}
+body[data-view=home] .pending .small-seg{margin:8px 0 0}
+body[data-view=home] .jar-txt b{font-size:clamp(26px,16cqh,54px)}
+body[data-view=home] .jar-txt small{font-size:clamp(11px,4cqh,13px)}
+@media (max-height:760px){
+  body[data-view=home] .card{padding:14px 18px}
+  body[data-view=home] .big-num{font-size:40px}
+  body[data-view=home] .bar{margin:10px 0 6px}
+  body[data-view=home] .stat{min-height:84px}
+  body[data-view=home] .mid-num{font-size:22px}
+  body[data-view=home] .paid{margin:2px 0 10px}
+}
