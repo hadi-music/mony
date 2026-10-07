@@ -230,7 +230,7 @@ function render() {
   if (name === 'new') updatePreview();
   if (name !== 'new') draft = null;
   if (window.MonySync) MonySync.paint();
-  if (name === 'splits' && window.caches) caches.keys().then(k => { const v = k.find(x => x.startsWith('mony-')); const el = $('#appVersion'); if (el && v) el.textContent = 'MONY ' + v.replace('mony-', ''); }).catch(() => {});
+  if (name === 'splits' && window.caches) caches.keys().then(k => { const v = k.find(x => x.startsWith('mony-')); const el = $('#appVersion'); if (el && v) el.textContent = 'BROKE ' + v.replace('mony-', ''); }).catch(() => {});
 }
 window.addEventListener('hashchange', () => { closeSheet(); render(); $('#view').scrollTop = 0; });
 
@@ -247,12 +247,12 @@ function viewGate() {
   });
   return `<section class="gate-wrap">
     <svg class="gate-mark" viewBox="0 0 200 200" aria-hidden="true"><g class="gate-spin">${slices}<g class="gate-cuts" stroke-width="${gap}">${cuts}</g></g></svg>
-    <h1 class="gate-word">MONY</h1>
+    <h1 class="gate-word">BROKE</h1>
     <p class="gate-tag">Pay yourself<br>first.</p>
     <p class="gate-sub">Split every payment. Tick off the transfers. Watch the jar fill.</p>
     <div class="gate-foot">
       <button class="gbtn" data-act="syncConnect">${G_LOGO}<span>Sign in with Google</span></button>
-      <p class="gate-fine">Your money stays on this phone and in a sheet in your own Google Drive. MONY can only see the sheet it creates. <a href="privacy.html">Privacy</a></p>
+      <p class="gate-fine">Your money stays on this phone and in a sheet in your own Google Drive. BROKE can only see the sheet it creates. <a href="privacy.html">Privacy</a></p>
     </div>
   </section>`;
 }
@@ -798,8 +798,8 @@ const toCSV = rows => rows.map(r => r.map(c => { const s = String(c ?? ''); retu
 /* ---------- backup ---------- */
 async function backup() {
   const stamp = new Date().toISOString();
-  const text = JSON.stringify({ app: 'MONY', version: 1, exported: stamp, data: S }, null, 2);
-  const ok = await downloadFile(`mony-backup-${todayStr()}.json`, text, 'application/json');
+  const text = JSON.stringify({ app: 'BROKE', version: 1, exported: stamp, data: S }, null, 2);
+  const ok = await downloadFile(`broke-backup-${todayStr()}.json`, text, 'application/json');
   if (ok) { S.lastBackup = Date.now(); save(); render(); toast('Backup saved'); }
 }
 function restorePicked(file) {
@@ -807,7 +807,7 @@ function restorePicked(file) {
   reader.onload = () => {
     let data;
     try { const j = JSON.parse(reader.result); data = j && j.data ? j.data : j; if (!data || !Array.isArray(data.wallets) || !Array.isArray(data.payments)) throw 0; }
-    catch (e) { toast('That file isn’t a MONY backup'); return; }
+    catch (e) { toast('That file isn’t a BROKE backup'); return; }
     confirmSheet('Replace everything?',
       `This replaces all current data with the backup (${data.payments.length} payments, ${(data.waiting || []).length} on Waiting on). It can’t be undone.`,
       'Replace with backup', () => { S = migrate(data); S.lastBackup = Date.now(); save(); go('home'); toast('Restored'); });
@@ -854,7 +854,7 @@ function viewSplits() {
   <h2>Savings</h2>
   <div class="card">
     <label class="fld"><span>Emergency floor</span><input inputmode="decimal" data-set="floor" value="${S.floor}"></label>
-    <label class="fld"><span>Already saved before MONY</span><input inputmode="decimal" data-set="startSavings" value="${S.startSavings || 0}"></label>
+    <label class="fld"><span>Already saved before BROKE</span><input inputmode="decimal" data-set="startSavings" value="${S.startSavings || 0}"></label>
     <span class="lbl2">Goals (filled in order, above the floor)</span>
     ${S.goals.map(g => `<div class="goal-row">
       <input type="text" value="${esc(g.name)}" data-goal="name" data-id="${g.id}" aria-label="Goal name">
@@ -884,7 +884,7 @@ function viewSplits() {
     <p class="small muted">${S.lastBackup ? `Last backup ${new Date(S.lastBackup).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : 'Never backed up'}. The backup file is yours to keep anywhere.</p>
     <div class="btns"><button class="btn sm" data-act="backup">Back up (JSON)</button><button class="btn sm" data-act="restore">Restore</button></div>
   </div>
-  <p class="small muted" id="appVersion" style="text-align:center;margin:20px 0 4px">MONY</p>`;
+  <p class="small muted" id="appVersion" style="text-align:center;margin:20px 0 4px">BROKE</p>`;
 }
 function splitSheet(id) {
   const s = id ? S.splits.find(x => x.id === id) : null;
@@ -982,7 +982,7 @@ const ACT = {
   },
   gotPaidFrom(el) { draft = null; go('new/' + el.dataset.id); },
   async copySheet() { (await copyText(toTSV(exportRows()))) ? toast('Copied — paste into cell A1') : toast('Couldn’t copy'); },
-  csv() { downloadFile(`mony-${todayStr()}.csv`, '﻿' + toCSV(exportRows()), 'text/csv'); },
+  csv() { downloadFile(`broke-${todayStr()}.csv`, '﻿' + toCSV(exportRows()), 'text/csv'); },
   backup,
   restore() { const f = $('#restoreFile'); f.value = ''; f.click(); },
   wAdd() {

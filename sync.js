@@ -1,8 +1,8 @@
 'use strict';
 /* Google Sheets sync.
-   The phone stays the fast copy; a "MONY" spreadsheet in the user's own Drive is the live mirror.
+   The phone stays the fast copy; a "BROKE" spreadsheet in the user's own Drive is the live mirror.
    Sign-in is a plain OAuth redirect (no popup, no Google script) so it works from the iPhone home screen.
-   Scope is drive.file: MONY can only see files it created.
+   Scope is drive.file: the app can only see files it created. (Internal keys still say "mony"; keep them so data carries over.)
    Sync is a three-way merge against what both sides looked like after the last sync,
    so edits made in the sheet (or on another phone) and edits made here both survive. */
 (function () {
@@ -13,6 +13,7 @@
   const TABS = ['Payments', 'Waiting', 'Withdrawals', 'Settings'];
   const SHEETS = 'https://sheets.googleapis.com/v4/spreadsheets/';
   const DRIVE = 'https://www.googleapis.com/drive/v3/files';
+  const SHEET_NAME = 'BROKE';
 
   const getLS = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
   const setLS = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} };
@@ -65,9 +66,13 @@
   }
   async function findOrCreateFile() {
     const q = encodeURIComponent("appProperties has { key='mony' and value='1' } and trashed=false");
-    const found = await g(`${DRIVE}?q=${q}&fields=files(id)&orderBy=createdTime&spaces=drive`);
-    if (found.files && found.files.length) return { id: found.files[0].id, fresh: false };
-    const f = await g(DRIVE, { method: 'POST', body: JSON.stringify({ name: 'MONY', mimeType: 'application/vnd.google-apps.spreadsheet', appProperties: { mony: '1' } }) });
+    const found = await g(`${DRIVE}?q=${q}&fields=files(id,name)&orderBy=createdTime&spaces=drive`);
+    if (found.files && found.files.length) {
+      const f = found.files[0];
+      if (f.name === 'MONY') await g(`${DRIVE}/${f.id}`, { method: 'PATCH', body: JSON.stringify({ name: SHEET_NAME }) }).catch(() => {}); // renamed app
+      return { id: f.id, fresh: false };
+    }
+    const f = await g(DRIVE, { method: 'POST', body: JSON.stringify({ name: SHEET_NAME, mimeType: 'application/vnd.google-apps.spreadsheet', appProperties: { mony: '1' } }) });
     const meta = await g(`${SHEETS}${f.id}?fields=sheets.properties`);
     const first = meta.sheets[0].properties.sheetId;
     const reqs = [{ updateSheetProperties: { properties: { sheetId: first, title: TABS[0], gridProperties: { frozenRowCount: 1 } }, fields: 'title,gridProperties.frozenRowCount' } }]
@@ -167,7 +172,7 @@
       .concat(D.waiting.map(w => { const c = canon.waiting(w); return [c.id, c.client, c.amount, c.expected, c.note, c.added]; }));
     const withdrawals = [['ID', 'Date', 'Amount', 'Kind', 'Reason']]
       .concat([...D.withdrawals].sort((a, b) => a.date.localeCompare(b.date)).map(w => { const c = canon.withdrawals(w); return [c.id, c.date, c.amount, c.kind, c.reason]; }));
-    const settings = [['Key', 'Value'], ['settings', JSON.stringify(settingsOf(D))], ['', ''], ['Note', 'Managed by MONY. Change settings in the app.']];
+    const settings = [['Key', 'Value'], ['settings', JSON.stringify(settingsOf(D))], ['', ''], ['Note', 'Managed by BROKE. Change settings in the app.']];
     return { Payments: payments, Waiting: waiting, Withdrawals: withdrawals, Settings: settings };
   }
   const colName = n => { let s = ''; n++; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
@@ -243,7 +248,7 @@
       if (before !== JSON.stringify(S) && $('#sheetWrap').hidden && !location.hash.startsWith('#new')) render();
     } catch (e) {
       if (e instanceof AuthError) state = 'auth';
-      else { state = 'error'; lastError = e.message || String(e); console.warn('MONY sync', e); }
+      else { state = 'error'; lastError = e.message || String(e); console.warn('BROKE sync', e); }
     } finally {
       busy = false; saveSync(); paint();
       if (pendingToast) { toast(pendingToast); pendingToast = ''; }
@@ -274,7 +279,7 @@
     if (!card) return;
     if (!CLIENT_ID) { card.innerHTML = '<p class="small muted">Google sync isn’t set up in config.js.</p>'; return; }
     if (!connected()) {
-      card.innerHTML = `<p class="small muted">Keep a live copy in a Google Sheet in your own Drive. It syncs both ways and works across phones. MONY can only see the sheet it creates.</p>
+      card.innerHTML = `<p class="small muted">Keep a live copy in a Google Sheet in your own Drive. It syncs both ways and works across phones. BROKE can only see the sheet it creates.</p>
         <button class="btn sm" data-act="syncConnect">Connect Google Sheets</button>`;
       return;
     }
@@ -308,7 +313,7 @@
         syncNow(true);
       },
       syncDisconnect() {
-        confirmSheet('Disconnect Google?', 'Sync stops on this phone. Your data stays here, and the MONY sheet stays in your Drive.', 'Disconnect', () => {
+        confirmSheet('Disconnect Google?', 'Sync stops on this phone. Your data stays here, and the BROKE sheet stays in your Drive.', 'Disconnect', () => {
           if (SY.token) fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(SY.token), { method: 'POST', mode: 'no-cors' }).catch(() => {});
           SY = {}; saveSync(); state = 'idle'; render(); toast('Disconnected');
         }, false);

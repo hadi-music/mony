@@ -1,4 +1,4 @@
-# MONY
+# BROKE
 
 Pay-yourself-first for irregular income. Log a payment, get the exact transfers, tick them off.
 
